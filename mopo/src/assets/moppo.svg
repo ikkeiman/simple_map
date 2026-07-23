@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 480" width="480" height="480">
+  <!--
+    輪郭パスは中心(0,0)基準で1回定義し、transformで拡大して使い回す。
+    元パス: 描画_左右対称.svg（幅117 x 高さ100を中心化したもの）
+  -->
+  <defs>
+    <path id="faceShape" d="M 58.5,3 C 58.5,-19.11 38.5,-50 0,-50 C -38.5,-50 -58.5,-20.58 -58.5,3 C -58.5,31 -44.52,50 0,50 C 44.15,50 58.5,31 58.5,3 Z"/>
+
+    <!-- 顔：左上から光が当たる立体グラデ -->
+    <radialGradient id="faceGrad" cx="0.38" cy="0.28" r="0.9">
+      <stop offset="0"   stop-color="#F8F0DC"/>
+      <stop offset="0.55" stop-color="#F0E6CB"/>
+      <stop offset="1"   stop-color="#E3D5B2"/>
+    </radialGradient>
+    <linearGradient id="rimGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#D5BE95"/>
+      <stop offset="1" stop-color="#B69D72"/>
+    </linearGradient>
+    <radialGradient id="earGrad" cx="0.40" cy="0.32" r="0.9">
+      <stop offset="0"   stop-color="#E6D5AF"/>
+      <stop offset="1"   stop-color="#CDB588"/>
+    </radialGradient>
+    <linearGradient id="mouthGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#B08B6C"/>
+      <stop offset="1" stop-color="#96714F"/>
+    </linearGradient>
+
+    <filter id="blurSoft" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="6"/></filter>
+    <filter id="blurWide" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="11"/></filter>
+
+    <clipPath id="faceClip"><path d="M 58.5,3 C 58.5,-19.11 38.5,-50 0,-50 C -38.5,-50 -58.5,-20.58 -58.5,3 C -58.5,31 -44.52,50 0,50 C 44.15,50 58.5,31 58.5,3 Z" transform="translate(240 262) scale(2.62)"/></clipPath>
+    <clipPath id="earClipL"><path d="M 93.36 252.12 C 73.95 262.36 62 271.5 46 270.5 C 32 269.7 28.5 259 33 244 C 37 231 46 218 55.15 207.5 C 66.37 192.01 81.56 174.29 96.55 183.66 C 111.54 193.02 115.83 240.26 93.36 252.12 Z"/></clipPath>
+    <clipPath id="earClipR"><path d="M 386.64 252.12 C 406.05 262.36 418 271.5 434 270.5 C 448 269.7 451.5 259 447 244 C 443 231 434 218 424.85 207.5 C 413.63 192.01 398.44 174.29 383.45 183.66 C 368.46 193.02 364.17 240.26 386.64 252.12 Z"/></clipPath>
+  </defs>
+
+  <!-- ===== 接地影（ドラッグで持ち上げたら薄く小さく） ===== -->
+  <ellipse id="ground-shadow" cx="240" cy="424" rx="135" ry="17"
+           fill="#8A7550" opacity="0.28" filter="url(#blurWide)"/>
+
+  <!-- ===== モッポ本体（GSAPバネ追従ルート） ===== -->
+  <g id="moppo">
+
+    <!-- 耳（しずく型・上の斜面から顔の横へ垂れる） -->
+    <g id="ear-l">
+      <path d="M 93.36 252.12 C 73.95 262.36 62 271.5 46 270.5 C 32 269.7 28.5 259 33 244 C 37 231 46 218 55.15 207.5 C 66.37 192.01 81.56 174.29 96.55 183.66 C 111.54 193.02 115.83 240.26 93.36 252.12 Z" fill="url(#earGrad)"/>
+      <g clip-path="url(#earClipL)">
+        <ellipse cx="80" cy="198" rx="22" ry="20" fill="#F4EAD0" opacity="0.55" filter="url(#blurSoft)"/>
+        <ellipse cx="47" cy="256" rx="26" ry="22" fill="#9C835B" opacity="0.5" filter="url(#blurSoft)"/>
+        <ellipse cx="94" cy="222" rx="14" ry="36" fill="#9C835B" opacity="0.3" filter="url(#blurSoft)"/>
+      </g>
+    </g>
+    <g id="ear-r">
+      <path d="M 386.64 252.12 C 406.05 262.36 418 271.5 434 270.5 C 448 269.7 451.5 259 447 244 C 443 231 434 218 424.85 207.5 C 413.63 192.01 398.44 174.29 383.45 183.66 C 368.46 193.02 364.17 240.26 386.64 252.12 Z" fill="url(#earGrad)"/>
+      <g clip-path="url(#earClipR)">
+        <ellipse cx="400" cy="198" rx="22" ry="20" fill="#F4EAD0" opacity="0.55" filter="url(#blurSoft)"/>
+        <ellipse cx="433" cy="256" rx="26" ry="22" fill="#9C835B" opacity="0.5" filter="url(#blurSoft)"/>
+        <ellipse cx="386" cy="222" rx="14" ry="36" fill="#9C835B" opacity="0.3" filter="url(#blurSoft)"/>
+      </g>
+    </g>
+
+    <!-- 頭 -->
+    <g id="head">
+      <!-- 厚み：下にずらした暗い輪郭＝側面 -->
+      <use id="head-depth" href="#faceShape" transform="translate(240 271) scale(2.85)" fill="#A2895E"/>
+      <!-- リム（縁） -->
+      <use id="head-rim" href="#faceShape" transform="translate(240 262) scale(2.85)" fill="url(#rimGrad)"/>
+
+      <!-- 顔面 -->
+      <g id="face">
+        <use href="#faceShape" transform="translate(240 262) scale(2.62)" fill="url(#faceGrad)"/>
+        <g clip-path="url(#faceClip)">
+          <!-- 上部ハイライト -->
+          <ellipse cx="208" cy="168" rx="118" ry="62" fill="#FFFDF2" opacity="0.45" filter="url(#blurWide)"/>
+          <!-- 下部の回り込み影 -->
+          <ellipse cx="246" cy="412" rx="185" ry="78" fill="#C2A97C" opacity="0.5" filter="url(#blurWide)"/>
+          <!-- 縁からの内側落ち影 -->
+          <use href="#faceShape" transform="translate(240 259) scale(2.66)"
+               fill="none" stroke="#B49B70" stroke-width="5" opacity="0.35" filter="url(#blurSoft)"/>
+        </g>
+      </g>
+
+      <!-- 顔パーツ -->
+      <g id="face-parts">
+        <g id="eye-l">
+          <circle cx="186" cy="246" r="16.5" fill="#33261B"/>
+          <circle cx="180" cy="240" r="4.5" fill="#FFF8E8" opacity="0.9"/>
+        </g>
+        <g id="eye-r">
+          <circle cx="296" cy="246" r="16.5" fill="#33261B"/>
+          <circle cx="290" cy="240" r="4.5" fill="#FFF8E8" opacity="0.9"/>
+        </g>
+
+        <ellipse id="cheek-l" cx="140" cy="294" rx="24" ry="15" fill="#F2A79C" opacity="0.85" filter="url(#blurSoft)"/>
+        <ellipse id="cheek-r" cx="342" cy="294" rx="24" ry="15" fill="#F2A79C" opacity="0.85" filter="url(#blurSoft)"/>
+
+        <!-- 口（小さく開いた口） -->
+        <path id="mouth"
+              d="M 240 288 C 231 288 227.5 294.5 232 301 C 235.5 306 244.5 306 248 301 C 252.5 294.5 249 288 240 288 Z"
+              fill="url(#mouthGrad)"/>
+      </g>
+    </g>
+  </g>
+</svg>

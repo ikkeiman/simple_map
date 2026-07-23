@@ -1,0 +1,62 @@
+/* モッポHub グローバルスタイル。画面全体をアプリの舞台にする */
+@import url('https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;500;700&family=Kaisei+Decol:wght@400;700&display=swap');
+
+:root {
+  --hub-bg: #efece6;
+  --hub-ink: #4a4335;
+  --hub-ink-soft: #9a9488;
+  --hub-line: #ddd7cb;
+  --hub-pill-bg: #fffdf8;
+  --hub-record: #2f6390;
+  --hub-record-coin: #6fa0dd;
+  --hub-play: #a06a34;
+  --hub-play-coin: #dd9a5c;
+  --hub-night-bg: #2b303a;
+  --hub-night-glow: #e0b84a;
+  --hub-font: 'Zen Maru Gothic', system-ui, sans-serif;
+  --hub-font-display: 'Kaisei Decol', serif;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  background: #d8d2c6;
+  font-family: var(--hub-font);
+  color: var(--hub-ink);
+  overscroll-behavior: none;
+}
+
+/* デスクトップではスマホ縦画面を中央に置く。実機では全画面 */
+#app {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.phone-stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--hub-bg);
+}
+
+@media (min-width: 520px) {
+  .phone-stage {
+    width: 390px;
+    height: min(844px, 96vh);
+    border-radius: 34px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+    border: 8px solid #26221b;
+  }
+}
