@@ -164,6 +164,99 @@ export const NIGHT_PINS = [
   { id: 'yakei', label: '夜景', icon: '🌃', lat: 35.1565, lng: 136.9028, xFrac: 0.24, yFrac: 0.45 },
 ]
 
+// ---- 探検(霧はらし) ----
+// 未開拓エリアを薄暗い靄で覆い、席のモッポをつまんで靄セルにドロップ=開拓開始(⑧)。
+// 探索中は物語で待ち(⑨)、帰宅時に霧が晴れて新しいピンが灯る(⑩)。
+export const FOG_GRID = { cols: 3, rows: 5 } // 標準地域メッシュ相当の 3×5 グリッド
+export const FOG_COLOR = 'rgba(24, 17, 9, .46)' // 薄暗い靄(要件指定値)
+export const SEAT_FRAC = { x: 0.5, y: 0.92 } // 席(モッポ定位置)の画面比率。点線ガイドの起点
+
+// 靄セルは「ジオ座標」に固定する。1セルの緯度・経度幅(スマホ幅で 3×5 が概ね収まる値)。
+// Google Maps の projection で画面pxへ投影し、パン/ズームに追従させる。
+export const FOG_MESH = { dLat: 0.005, dLng: 0.006 }
+// メッシュ原点 = 北西角。地図中心を 3×5 で囲むように配置する
+export const FOG_ORIGIN = {
+  lat: MAP_CENTER.lat + (FOG_GRID.rows / 2) * FOG_MESH.dLat,
+  lng: MAP_CENTER.lng - (FOG_GRID.cols / 2) * FOG_MESH.dLng,
+}
+
+export const EXPLORE_STORAGE_KEY = 'moppo-hub-explored'
+export const EXPLORE_ONCE_PER_DAY = false // 試作は制限なし。true にすると1日1回ゲート
+export const EXPLORE_DURATION_MS = 9000 // 「おでかけ」の待ち時間(デモ用の短尺)
+export const EXPLORE_STORY_MIN = 3 // 「○ふんくらいかな?」に出す目安の分
+export const EXPLORE_TOAST_MS = 3200 // 霧が晴れたトーストの表示時間
+
+// セル定義。id は `r{row}c{col}`(row 0..4 / col 0..2)。
+//  explored: 最初から開拓済み(靄なし。席や現在地まわり)
+//  occupied: だれかのモッポが探索中(匿名シルエット。開拓不可)
+//  suggested: つまんだ時に点線ガイドが向かう「おすすめ」セル
+//  area / found / count: 開拓で見つかるエリア名・表示ピン・件数。未指定セルは自動生成(useExploration)
+export const EXPLORE_CELLS = [
+  { id: 'r4c0', explored: true },
+  { id: 'r4c1', explored: true }, // 席のあるセル
+  { id: 'r4c2', explored: true },
+  { id: 'r3c1', explored: true },
+  { id: 'r2c2', explored: true }, // 現在地まわり
+  { id: 'r1c2', occupied: true }, // だれかのモッポが探索中
+  {
+    id: 'r0c0',
+    suggested: true,
+    area: 'きたやま公園',
+    count: 8,
+    // オフセットはセル中心からの緯度・経度差(セル幅 dLat/dLng の内側に収める)
+    found: [
+      { id: 'kita1', label: 'きたやま公園', category: 'super', priority: '#4e9e6a', dLat: 0.0015, dLng: -0.0012 },
+      { id: 'kita2', label: 'パンの店', category: 'cafe', priority: '#d6a23c', dLat: -0.0006, dLng: 0.0016 },
+      { id: 'kita3', label: '古本屋', category: 'cafe', priority: '#7b73b0', dLat: -0.0017, dLng: -0.0005 },
+    ],
+  },
+]
+
+// 自動生成用: 未指定の靄セルを開拓した時のエリア名プールと表示ピンの色・オフセット
+export const EXPLORE_AREA_POOL = ['おおすの もり', '川ぞい', 'ひがし商店街', 'みなみ広場', 'にしの路地', 'きたの丘']
+export const EXPLORE_FOUND_MIN = 5 // 自動生成の「見つけた件数」の下限
+export const EXPLORE_FOUND_MAX = 12 // 同上限
+// 開拓で灯る表示ピンの色(優先度カラー)とセル中心からの緯度・経度オフセット(3点)
+export const EXPLORE_PIN_TINTS = ['#4e9e6a', '#d6a23c', '#cf6a4d']
+export const EXPLORE_PIN_OFFSETS = [
+  { dLat: 0.0016, dLng: -0.0012 },
+  { dLat: -0.0008, dLng: 0.0016 },
+  { dLat: -0.0018, dLng: -0.0006 },
+]
+
+// ---- ⑩ 霧はらし演出(GSAP タイムラインの尺・粒度。全部ここで調整) ----
+export const REVEAL = {
+  fogTile: { rows: 5, cols: 5 }, // 靄セルを砕く小タイルの分割数(粒子っぽさ)
+  fogStagger: 0.02, // タイルが波打って散る間隔
+  fogEase: 'power2.in',
+  fogDuration: 0.7, // 1タイルが舞い上がって消えるまで
+  fogBlowY: -46, // 舞い上がる基準量(px)
+  fogBlowSpread: 60, // 左右・回転のばらつき(px/deg)
+  sweepDuration: 0.6, // セルを横切る光のスイープ
+  pinDelay: 0.35, // 靄が晴れ始めてからピンが灯り出すまで
+  pinDuration: 0.75, // 1ピンの pop
+  pinEase: 'elastic.out(1, 0.45)',
+  pinStagger: 0.16, // ピンが1つずつ灯る間隔
+  ringDuration: 1.1, // 各ピンの光の輪が広がって消えるまで
+  countUp: 0.9, // 「○けん」カウントアップの尺
+  tadaAt: 0.2, // モッポ「じゃーん」を始めるタイミング
+  toastAt: 0.5, // トーストを出すタイミング
+  welcomeAt: 1.4, // 「ただいま!」を言うタイミング
+  total: 2.6, // 演出全体の尺(この後 idle へ)
+}
+
+// 探検のセリフ。{min}{area}{n} は実行時に置換
+export const EXPLORE_SPEECH = {
+  away: 'モッポは いま おでかけ中　{min}ふんくらいかな？',
+  exploring: '🐾 たんけん中…',
+  done: 'たんけん おわったよ！　タップしてね',
+  welcome: 'ただいま！{area}で {n}けん 見つけたよ',
+  fogToast: '☀️ この街の 霧が すこし 晴れたよ',
+  hintGrab: 'モッポを つまんで、靄の上で はなそう',
+  dropHere: 'ここに はなす',
+  somebody: 'だれかの モッポが 探索中',
+}
+
 // ---- 遷移先スクリーン(11種) ----
 export const SCREENS = {
   route: { icon: '🧭', label: '開拓' },

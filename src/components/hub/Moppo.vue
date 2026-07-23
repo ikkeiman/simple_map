@@ -260,7 +260,7 @@ const speech = ref(null)
 const speechBig = ref(false)
 const speechEl = ref(null)
 let speechHide = null
-const say = async (text, holdMs = 900, { big = false } = {}) => {
+const say = async (text, holdMs = 900, { big = false, persist = false } = {}) => {
   speechHide?.kill()
   speech.value = text
   speechBig.value = big
@@ -272,6 +272,7 @@ const say = async (text, holdMs = 900, { big = false } = {}) => {
       { scale: 1, opacity: 1, duration: 0.45, ease: JELLY.popEase, transformOrigin: '10% 100%', overwrite: 'auto' },
     )
   }
+  if (persist) return // 探索中の🐾/「タップしてね」等、次の say まで消さない吹き出し
   speechHide = gsap.delayedCall(holdMs / 1000, () => {
     if (!speechEl.value) {
       speech.value = null
@@ -434,7 +435,15 @@ const getHomeCenter = () => {
   return r ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : null
 }
 
-defineExpose({ returnHome, squishPop, playSneezeAt, startSleepSequence, cancelSleepSequence, wakeStartle, getHomeCenter })
+// ---- ⑨⑩ 探検モーション。判断は親、動きはここ ----
+const walkOut = (dx, dy, opts) => {
+  breatheTween?.kill() // 待機呼吸を止めてから歩き出す(帰宅時 returnHome が呼び直す)
+  return motion.walkOut(dx, dy, opts)
+}
+const stopWalk = () => motion.stopWalk()
+const tada = () => motion.tada()
+
+defineExpose({ returnHome, squishPop, playSneezeAt, startSleepSequence, cancelSleepSequence, wakeStartle, getHomeCenter, say, walkOut, stopWalk, tada })
 </script>
 
 <style scoped>

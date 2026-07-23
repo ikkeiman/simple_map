@@ -3,6 +3,7 @@
   <div class="map-canvas" :class="{ night }">
     <GoogleMap
       v-if="apiKey"
+      ref="gmapRef"
       :api-key="apiKey"
       :center="MAP_CENTER"
       :zoom="MAP_ZOOM"
@@ -17,6 +18,13 @@
         </CustomMarker>
         <CustomMarker :options="{ position: CURRENT_LOCATION, anchorPoint: 'CENTER' }">
           <div class="current-loc"></div>
+        </CustomMarker>
+        <!-- 開拓で見つけたピン。晴れた直後(justRevealed)は twinkle で1つずつ灯る -->
+        <CustomMarker v-for="(pin, i) in discoveredPins" :key="pin.id" :options="{ position: pin, anchorPoint: 'CENTER' }">
+          <div class="disc-pin" :class="{ twinkling: pin.justRevealed }" :style="twinkleStyle(pin, i)">
+            <span v-if="pin.justRevealed" class="sparkle">✨</span>
+            <span class="ddot" :style="{ background: pin.priority }"></span><span class="lbl">{{ pin.label }}</span>
+          </div>
         </CustomMarker>
       </template>
       <template v-else>
@@ -41,6 +49,16 @@
           <span class="dot" :style="{ background: pin.priority }"></span><span class="lbl">{{ pin.label }}</span>
         </div>
         <div class="current-loc abs" :style="fracStyle(CURRENT_LOCATION)"></div>
+        <div
+          v-for="(pin, i) in discoveredPins"
+          :key="pin.id"
+          class="disc-pin abs"
+          :class="{ twinkling: pin.justRevealed }"
+          :style="[fracStyle(pin), twinkleStyle(pin, i)]"
+        >
+          <span v-if="pin.justRevealed" class="sparkle">✨</span>
+          <span class="ddot" :style="{ background: pin.priority }"></span><span class="lbl">{{ pin.label }}</span>
+        </div>
       </template>
       <template v-else>
         <div v-for="pin in DAY_PINS" :key="pin.id" class="dim-pin abs" :style="fracStyle(pin)"></div>
@@ -60,8 +78,9 @@
 </template>
 
 <script setup>
-// 地図を描くだけのレイヤー。ジェスチャーや状態遷移は持たない
-import { computed } from 'vue'
+// 地図を描くだけのレイヤー。ジェスチャーや状態遷移は持たない。
+// 例外: 靄をジオ座標に固定するため、地図が用意できたら map/api を親へ渡す(projection 用)
+import { computed, ref, watch } from 'vue'
 import { GoogleMap, CustomMarker } from 'vue3-google-map'
 import {
   MAP_CENTER,
@@ -72,12 +91,28 @@ import {
   NIGHT_PINS,
   CURRENT_LOCATION,
   PRIORITY_LEGEND,
+  REVEAL,
 } from '../../constants/hubConfig'
 
 const props = defineProps({
   night: { type: Boolean, default: false },
   visibleCategories: { type: Array, default: null }, // 絞り込み(カテゴリ id)。空/null なら全表示
+  discoveredPins: { type: Array, default: () => [] }, // 開拓で見つけたピン(justRevealed で twinkle)
 })
+const emit = defineEmits(['map-ready'])
+
+// Google 地図が用意できたら map/api を親へ渡す。親は projection で靄セルを画面px化する
+const gmapRef = ref(null)
+watch(
+  () => gmapRef.value?.ready,
+  (isReady) => {
+    if (isReady) emit('map-ready', { map: gmapRef.value.map, api: gmapRef.value.api })
+  },
+)
+
+// twinkle の点灯を1つずつ遅らせて「順に灯る」カスケードにする(晴れ始めてから pinDelay 後に開始)
+const twinkleStyle = (pin, i) =>
+  pin.justRevealed ? { '--tw-delay': `${REVEAL.pinDelay + i * REVEAL.pinStagger}s` } : {}
 
 const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY ?? ''
 
@@ -212,6 +247,95 @@ const fracStyle = (pin) => ({ left: `${pin.xFrac * 100}%`, top: `${pin.yFrac * 1
   background: #7fa8d4;
   border: 3px solid #fff;
   box-shadow: 0 0 0 6px rgba(127, 168, 212, 0.2);
+}
+
+/* --- 開拓で見つけたピン --- */
+.disc-pin {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  position: relative;
+}
+.disc-pin .ddot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  flex: none;
+  /* 灯った直後の余韻。淡い金色のグロー */
+  box-shadow: 0 0 8px 2px rgba(224, 184, 74, 0.55);
+}
+.disc-pin .lbl {
+  background: #fffdf6;
+  border: 1px solid var(--hub-line);
+  border-radius: 8px;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #55504a;
+}
+.disc-pin .sparkle {
+  position: absolute;
+  left: -6px;
+  top: -12px;
+  font-size: 13px;
+  pointer-events: none;
+}
+/* twinkle: 光の輪が広がりつつ、ぷるんと弾けて灯る(--tw-delay で順に) */
+.disc-pin.twinkling {
+  animation: disc-pop 0.75s var(--tw-delay, 0s) both cubic-bezier(0.18, 1.5, 0.4, 1);
+}
+.disc-pin.twinkling .ddot::after {
+  content: '';
+  position: absolute;
+  left: 5.5px;
+  top: 50%;
+  width: 11px;
+  height: 11px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 2px solid rgba(224, 184, 74, 0.9);
+  animation: disc-ring 1.1s var(--tw-delay, 0s) both ease-out;
+}
+.disc-pin.twinkling .sparkle {
+  animation: disc-sparkle 0.9s var(--tw-delay, 0s) both ease-out;
+}
+@keyframes disc-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0);
+  }
+  60% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes disc-ring {
+  0% {
+    opacity: 0.9;
+    transform: translate(-50%, -50%) scale(0.3);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(3.2);
+  }
+}
+@keyframes disc-sparkle {
+  0% {
+    opacity: 0;
+    transform: scale(0) rotate(-30deg);
+  }
+  45% {
+    opacity: 1;
+    transform: scale(1.2) rotate(0deg);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.8) rotate(20deg);
+  }
 }
 
 /* --- ピン(夜): 見つけた店だけ光る。それ以外は暗いまま --- */

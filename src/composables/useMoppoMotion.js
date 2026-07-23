@@ -22,6 +22,7 @@ export function useMoppoMotion(bodyRef) {
   let prevY = 0
   let smoothVX = 0
   let smoothVY = 0
+  let walkLoop = null // 探索中の「その場で歩く」ループ tween
 
   const stopFollow = () => {
     if (tickerFn) gsap.ticker.remove(tickerFn)
@@ -85,10 +86,67 @@ export function useMoppoMotion(bodyRef) {
     pendingY = dy
   }
 
+  // ⑨ 探索へ「歩いて」出かける。home(0,0)→(dx,dy) をトコトコ跳ねて進み、
+  // 到着したら onArrive を呼びつつ、その場で歩きループ(小ホップ＋横ゆれ)を始める。
+  // 歩きループは stopWalk() / returnHome() で止める。
+  const walkOut = (dx, dy, { onArrive } = {}) => {
+    const el = bodyRef.value
+    if (!el) return null
+    stopFollow()
+    stopWalk()
+    gsap.killTweensOf(el)
+    gsap.set(el, { transformOrigin: '50% 100%' })
+    const steps = 6 // 数歩に分けて、1歩ごとに上下＋左右へ小さく傾けて「歩き」に見せる
+    const tl = gsap.timeline({
+      onComplete: () => {
+        walkLoop = gsap
+          .timeline({ repeat: -1 })
+          .to(el, { y: dy - 9, scaleY: 1.06, scaleX: 0.95, duration: 0.28, ease: 'power1.out' })
+          .to(el, { y: dy, scaleY: 0.97, scaleX: 1.03, duration: 0.24, ease: 'power1.in' })
+          .to(el, { x: dx + 11, rotation: 4, duration: 0.52, ease: 'sine.inOut' }, 0)
+          .to(el, { x: dx - 11, rotation: -4, duration: 0.52, ease: 'sine.inOut' }, 0.52)
+        onArrive?.()
+      },
+    })
+    for (let i = 1; i <= steps; i++) {
+      const t = i / steps
+      tl.to(el, {
+        x: dx * t,
+        y: dy * t - (i % 2 ? 12 : 0), // 一歩ごとにぴょこっと持ち上がる
+        rotation: i % 2 ? -6 : 6,
+        scaleY: i % 2 ? 1.05 : 0.97,
+        scaleX: i % 2 ? 0.96 : 1.04,
+        duration: 0.17,
+        ease: 'power1.inOut',
+      })
+    }
+    tl.to(el, { rotation: 0, y: dy, scaleY: 1, scaleX: 1, duration: 0.12 })
+    return tl
+  }
+
+  const stopWalk = () => {
+    walkLoop?.kill()
+    walkLoop = null
+  }
+
+  // ⑩「じゃーん!」の発見ポーズ。予備しゃがみ→大きくジャンプ→着地ぷるん
+  const tada = () => {
+    const el = bodyRef.value
+    if (!el) return null
+    stopWalk()
+    return gsap
+      .timeline()
+      .to(el, { y: 8, scaleY: 0.78, scaleX: 1.2, rotation: 0, duration: 0.14, ease: 'power2.out', transformOrigin: '50% 100%' })
+      .to(el, { y: -46, scaleY: 1.2, scaleX: 0.84, duration: 0.26, ease: 'power3.out' })
+      .to(el, { y: 0, scaleY: 0.9, scaleX: 1.12, duration: 0.18, ease: 'power2.in' })
+      .to(el, { scaleY: 1, scaleX: 1, duration: 1.0, ease: JELLY.returnEase })
+  }
+
   // 所定の位置(真ん中下 = transform 0,0)へぷるんと帰る
   const returnHome = (onDone) => {
     if (!bodyRef.value) return
     stopFollow()
+    stopWalk()
     gsap.to(bodyRef.value, {
       x: 0,
       y: 0,
@@ -207,7 +265,7 @@ export function useMoppoMotion(bodyRef) {
     })
   }
 
-  return { startFollow, followTo, returnHome, squishPop, sneezeAt, sleepSequence, cancelSleep, wakeStartle, sleepBreathe, breathe }
+  return { startFollow, followTo, returnHome, squishPop, sneezeAt, sleepSequence, cancelSleep, wakeStartle, sleepBreathe, breathe, walkOut, stopWalk, tada }
 }
 
 // ボタン等を「ぷにっ」と潰して戻す共通ヘルパ(トグル/チップのタップ演出用)。
