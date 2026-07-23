@@ -76,13 +76,16 @@ import {
 
 const props = defineProps({
   night: { type: Boolean, default: false },
-  visiblePriorities: { type: Array, default: null }, // 絞り込み。null なら全表示
+  visibleCategories: { type: Array, default: null }, // 絞り込み(カテゴリ id)。空/null なら全表示
 })
 
 const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY ?? ''
 
+// 空選択=すべて表示。えらばれている時だけ、そのカテゴリのピンに絞る
 const visibleDayPins = computed(() =>
-  props.visiblePriorities ? DAY_PINS.filter((pin) => props.visiblePriorities.includes(pin.priority)) : DAY_PINS,
+  props.visibleCategories && props.visibleCategories.length
+    ? DAY_PINS.filter((pin) => props.visibleCategories.includes(pin.category))
+    : DAY_PINS,
 )
 
 const fracStyle = (pin) => ({ left: `${pin.xFrac * 100}%`, top: `${pin.yFrac * 100}%` })

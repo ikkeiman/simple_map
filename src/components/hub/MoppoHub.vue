@@ -2,8 +2,8 @@
   <!-- モッポHub 全体のコンテナ = 状態機械。
        レイヤー: 地図 → 検索 → ★ → ドロップゾーン → モッポ → メニュー/モーダル -->
   <div ref="hubEl" class="moppo-hub">
-    <MapCanvas :night="isNight" :visible-priorities="visiblePriorities" />
-    <SearchBar v-if="!isNight" @filter-change="visiblePriorities = $event" />
+    <MapCanvas :night="isNight" :visible-categories="visibleCategories" />
+    <SearchBar v-if="!isNight" @filter-change="visibleCategories = $event" />
 
     <FavoriteBar
       v-if="!isNight"
@@ -73,7 +73,6 @@ import {
   SCREENS,
   RECORD_ITEMS,
   PLAY_ITEMS,
-  PRIORITY_LEGEND,
 } from '../../constants/hubConfig'
 
 const router = useRouter()
@@ -85,7 +84,7 @@ const favBarRef = ref(null)
 const hubState = ref('idle')
 const sneezeModalVisible = ref(false)
 const splashOrigin = ref(null) // くしゃみ飛沫の発生点(モッポの顔位置)
-const visiblePriorities = ref(PRIORITY_LEGEND.map((item) => item.color)) // 絞り込み(初期は全表示)
+const visibleCategories = ref([]) // 絞り込み(空=すべて表示。えらぶと足し算)
 const sheetMode = ref(null) // null | 'browse' | 'pick'
 const pendingSlot = ref(null)
 
@@ -189,7 +188,8 @@ const onGrab = () => {
 }
 const onDrag = (p) => {
   if (hubState.value !== 'grabbed') return
-  const local = toLocal(p.x, p.y)
+  // ホバー判定は指ではなくモッポの中心(mx/my)で行う
+  const local = toLocal(p.mx ?? p.x, p.my ?? p.y)
   activeZone.value = hitZone(local)
   // ゾーンに重なったらその側のアイコンを展開(発火)。展開は離すまで維持
   if (activeZone.value && expandedSide.value !== activeZone.value) {
@@ -203,7 +203,7 @@ const onRelease = (p) => {
     moppoRef.value?.returnHome()
     return
   }
-  const target = hoveredIcon.value ?? (p ? hitIcon(toLocal(p.x, p.y)) : null)
+  const target = hoveredIcon.value ?? (p ? hitIcon(toLocal(p.mx ?? p.x, p.my ?? p.y)) : null)
   resetDragState() // 離したらゾーンもアイコンも自動で消す
   hubState.value = 'idle'
   moppoRef.value?.returnHome() // 離すと所定の位置(真ん中下)へ

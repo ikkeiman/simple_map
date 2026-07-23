@@ -124,7 +124,14 @@ import { computed, nextTick, onMounted, ref, useTemplateRef, watch } from 'vue'
 import gsap from 'gsap'
 import { useMoppoGesture } from '../../composables/useMoppoGesture'
 import { useMoppoMotion } from '../../composables/useMoppoMotion'
-import { JELLY, SPEECH } from '../../constants/hubConfig'
+import {
+  JELLY,
+  SPEECH,
+  DRAG_PEEK_MAX,
+  DRAG_PEEK_LERP,
+  DRAG_PEEK_MIN_MOVE,
+  DRAG_PEEK_DIR_SMOOTH,
+} from '../../constants/hubConfig'
 
 const props = defineProps({
   // idle | talking | happy | sleepy | asleep | grabbed | sneeze | startled
@@ -152,6 +159,38 @@ let waking = false
 
 const motion = useMoppoMotion(bodyEl)
 
+// 指がモッポを隠さないための「先行(のぞき)」。動かした“向き”へ常に一定量ずらして指の外に出す。
+// 向きは直前の1ドラッグぶんの移動から決めるので、少し動かすだけで即その側へ出る
+// (掴んだ位置からの相対ではないので中心基準に感じない)。停止中は最後の向きを保つ。
+let peekX = 0
+let peekY = 0
+let peekDirX = 0
+let peekDirY = 0
+let lastDx = 0
+let lastDy = 0
+const resetPeek = () => {
+  peekX = peekY = peekDirX = peekDirY = lastDx = lastDy = 0
+}
+// 指に足すオフセットを返す。dx/dy は掴んだ位置からの指の変位
+const updatePeek = (dx, dy) => {
+  const mvx = dx - lastDx // 前回イベントからの動き = いまの向き
+  const mvy = dy - lastDy
+  lastDx = dx
+  lastDy = dy
+  const mv = Math.hypot(mvx, mvy)
+  if (mv >= DRAG_PEEK_MIN_MOVE) {
+    // 瞬間の向きへ即スナップせず EMA でならす(遊び)。細かい左右の往復では側が入れ替わらない
+    peekDirX += (mvx / mv - peekDirX) * DRAG_PEEK_DIR_SMOOTH
+    peekDirY += (mvy / mv - peekDirY) * DRAG_PEEK_DIR_SMOOTH
+  }
+  // 常に一定量(DRAG_PEEK_MAX)。向いている側へ寄せていく。
+  // ただし下方向(Y正)へは出さない = 左右と上だけ先行させる
+  const dirY = Math.min(0, peekDirY)
+  peekX += (peekDirX * DRAG_PEEK_MAX - peekX) * DRAG_PEEK_LERP
+  peekY += (dirY * DRAG_PEEK_MAX - peekY) * DRAG_PEEK_LERP
+  return { x: peekX, y: peekY }
+}
+
 // 持ち上げたら接地影を薄く小さく / 離したら戻す
 const liftShadow = (lifted) => {
   if (!shadowEl.value) return
@@ -167,17 +206,21 @@ const liftShadow = (lifted) => {
 
 const gesture = useMoppoGesture(rootEl, {
   onGrab: () => {
+    resetPeek()
     motion.startFollow()
     liftShadow(true)
     emit('grab')
   },
   onDrag: (p) => {
-    motion.followTo(p.dx, p.dy)
-    emit('drag', p)
+    // 指の外へモッポを出す(先行)。ホバー判定もモッポ基準にするため、
+    // ずらした後のモッポ中心座標(mx/my)を一緒に渡す
+    const { x: ox, y: oy } = updatePeek(p.dx, p.dy)
+    motion.followTo(p.dx + ox, p.dy + oy)
+    emit('drag', { ...p, mx: p.x + ox, my: p.y + oy })
   },
   onRelease: (p) => {
     liftShadow(false)
-    emit('release', p)
+    emit('release', { ...p, mx: p.x + peekX, my: p.y + peekY })
   },
   onTap: () => emit('tap'),
   onLongPress: () => emit('long-press'),

@@ -30,14 +30,30 @@ export const ICON_LAYOUT = [
 export const PILL_LAYOUT = { xFrac: 0.19, dy: -120 }
 export const ICON_HIT = 46 // アイコンの当たり判定半径。コイン(直径60)より少し広め
 
+// ---- ドラッグ中の「指よけ」先行(のぞき)オフセット ----
+// つまむと指がモッポを隠すので、指の“外”へモッポを出す。方向は「掴んだ位置からの相対」ではなく
+// 「いま動かしている向き」で決める。だから少し動かすだけで即その側(左右/上)へ出る。
+export const DRAG_PEEK_MAX = 52 // 指からずらす距離(px)。距離で増減させず常にこの量、向きだけ変える
+export const DRAG_PEEK_LERP = 0.34 // 先行位置へ寄せる速さ(ドラッグイベントごと)。大きいほど即座に外へ
+export const DRAG_PEEK_MIN_MOVE = 2 // 向きを更新する最小移動量(px)。これ未満の手ブレでは向きを保つ
+export const DRAG_PEEK_DIR_SMOOTH = 0.16 // 向きの平滑化(遊び)。小さいほど左右の往復に鈍感=側が入れ替わりにくい
+
 // ---- ゼリー質感(GSAP) ----
 // 参考: codepen の soft-body / jelly デモ群。伸び→潰れ→減衰揺れをワンセットで見せる
 export const JELLY = {
-  followDuration: 0.5, // 指への追従の遅れ。大きいほど「もちっ」と重い
+  followDuration: 0.3, // 指への追従の遅れ。小さいほどキビキビ(大きいと「もちっ」と重い)
   followEase: 'power3.out',
   returnEase: 'elastic.out(1, 0.3)', // 定位置復帰。振幅低めで長くぷるぷる揺れる
   returnDuration: 1.25,
-  squashMax: 0.3, // 速度連動の潰れ量の上限。これ以上潰すと不気味
+  squashMax: 0.32, // 速度連動の潰れ量の上限。これ以上潰すと不気味
+  // 変形(潰し・傾き)の応答。左右によく動いて「ぷるん」と見えるよう敏感めに。
+  squashSpeedCap: 0.9, // 変形が最大になる速度(px/ms)。小さいほど軽い動きで大きく揺れる
+  velSmoothX: 0.4, // 横速度の平滑化係数。大きいほど敏感(軽いフリックに即反応)
+  velSmoothY: 0.26, // 縦速度の平滑化係数(横より控えめ)
+  wobbleDuration: 0.34, // 潰れ/傾きの追従時間。停止時に back で「ぷるんっ」と行き過ぎて戻る
+  wobbleEase: 'back.out(1.7)',
+  rotGain: 40, // 横速度→傾き(度)の倍率。大きいほど左右によく揺れる
+  rotMax: 20, // 傾きの上限(度)
   popEase: 'elastic.out(1, 0.45)', // コイン・カード出現のぷるん
   popDuration: 0.7,
   popStagger: 0.06,
@@ -95,15 +111,16 @@ export const MAP_STYLE_NIGHT = [
   { featureType: 'transit', stylers: [{ visibility: 'off' }] },
 ]
 
-// 昼のスポットピン(1a)。frac はフォールバック地図用の画面比率座標
+// 昼のスポットピン(1a)。frac はフォールバック地図用の画面比率座標。
+// category は絞り込み(PLACE_CATEGORIES.id)に対応
 export const DAY_PINS = [
-  { id: 'wakka', label: 'カフェ wakka', priority: '#cf6a4d', lat: 35.1642, lng: 136.9021, xFrac: 0.52, yFrac: 0.3 },
-  { id: 'nouka', label: '喫茶のうか', priority: '#d6a23c', lat: 35.1613, lng: 136.9105, xFrac: 0.62, yFrac: 0.38 },
-  { id: 'oto', label: '焙煎所 音', priority: '#7b73b0', lat: 35.1571, lng: 136.9034, xFrac: 0.42, yFrac: 0.47 },
+  { id: 'wakka', label: 'カフェ wakka', category: 'cafe', priority: '#cf6a4d', lat: 35.1642, lng: 136.9021, xFrac: 0.52, yFrac: 0.3 },
+  { id: 'nouka', label: '喫茶のうか', category: 'cafe', priority: '#d6a23c', lat: 35.1613, lng: 136.9105, xFrac: 0.62, yFrac: 0.38 },
+  { id: 'oto', label: '焙煎所 音', category: 'cafe', priority: '#7b73b0', lat: 35.1571, lng: 136.9034, xFrac: 0.42, yFrac: 0.47 },
 ]
 export const CURRENT_LOCATION = { lat: 35.1598, lng: 136.9082, xFrac: 0.7, yFrac: 0.44 }
 
-// 優先度凡例(1a)。絞り込みドロップダウンの項目も兼ねる
+// 優先度凡例(1a)。地図の凡例に使う
 export const PRIORITY_LEGEND = [
   { label: '絶対', color: '#cf6a4d' },
   { label: '出来れば', color: '#d6a23c' },
@@ -111,9 +128,34 @@ export const PRIORITY_LEGEND = [
   { label: '行った', color: '#bcb6cf' },
 ]
 
+// 絞り込みドロップダウンの項目(施設カテゴリ)。tint はアイコン台座の色。
+// おしゃれに見せるため、絵文字を淡い色の丸バッジに載せる(design: ゼリー質感の淡色)
+export const PLACE_CATEGORIES = [
+  { id: 'restaurant', icon: '🍴', label: 'レストラン', tint: '#e8836a' },
+  { id: 'izakaya', icon: '🍺', label: '居酒屋', tint: '#e0a53c' },
+  { id: 'cafe', icon: '☕', label: 'カフェ', tint: '#b3835a' },
+  { id: 'conveni', icon: '🏪', label: 'コンビニ', tint: '#5b9bd5' },
+  { id: 'super', icon: '🛒', label: 'スーパー', tint: '#6fb07a' },
+  { id: 'gas', icon: '⛽', label: 'ガソリンスタンド', tint: '#4fa6a0' },
+  { id: 'parking', icon: '🅿️', label: '駐車場', tint: '#6f79c4' },
+  { id: 'hotel', icon: '🏨', label: 'ホテル', tint: '#a878c0' },
+  { id: 'hospital', icon: '🏥', label: '病院', tint: '#d96a6a' },
+  { id: 'pharmacy', icon: '💊', label: '薬局', tint: '#e089a8' },
+  { id: 'atm', icon: '🏧', label: 'ATM', tint: '#7d8aa0' },
+  { id: 'post', icon: '📮', label: '郵便局', tint: '#d16f8a' },
+]
+
 // ---- ピンの登録先(日付) ----
 export const DEFAULT_PIN_DATE = { y: 2026, m: 10, d: 20 } // ワイヤーフレーム準拠の初期値
 export const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土']
+// 最近使用した日付(カレンダー上部のクイック選択)。選ぶたび先頭に追加し localStorage 保存
+export const RECENT_DATES_STORAGE_KEY = 'moppo-hub-recent-dates'
+export const RECENT_DATES_MAX = 4 // 横に並べても崩れない数に制限
+export const DEFAULT_RECENT_DATES = [
+  { y: 2026, m: 11, d: 16 },
+  { y: 2026, m: 10, d: 28 },
+  { y: 2026, m: 10, d: 12 },
+]
 
 // よるモード: モッポが見つけた店(光るピン)。それ以外は暗いまま
 export const NIGHT_PINS = [

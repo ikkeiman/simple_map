@@ -39,9 +39,9 @@ export function useMoppoMotion(bodyRef) {
     gsap.set(el, { transformOrigin: '50% 60%' })
     quickX = gsap.quickTo(el, 'x', { duration: JELLY.followDuration, ease: JELLY.followEase })
     quickY = gsap.quickTo(el, 'y', { duration: JELLY.followDuration, ease: JELLY.followEase })
-    quickScaleX = gsap.quickTo(el, 'scaleX', { duration: 0.25, ease: 'power2.out' })
-    quickScaleY = gsap.quickTo(el, 'scaleY', { duration: 0.25, ease: 'power2.out' })
-    quickRot = gsap.quickTo(el, 'rotation', { duration: 0.25, ease: 'power2.out' })
+    quickScaleX = gsap.quickTo(el, 'scaleX', { duration: JELLY.wobbleDuration, ease: JELLY.wobbleEase })
+    quickScaleY = gsap.quickTo(el, 'scaleY', { duration: JELLY.wobbleDuration, ease: JELLY.wobbleEase })
+    quickRot = gsap.quickTo(el, 'rotation', { duration: JELLY.wobbleDuration, ease: JELLY.wobbleEase })
     pendingX = prevX = Number(gsap.getProperty(el, 'x'))
     pendingY = prevY = Number(gsap.getProperty(el, 'y'))
     smoothVX = smoothVY = 0
@@ -58,20 +58,23 @@ export function useMoppoMotion(bodyRef) {
         quickY(pendingY)
         sentY = pendingY
       }
-      // 速度(px/ms)は EMA で平滑化。生の値はノイズだらけで揺れ(かくつき)の原因になる
+      // 速度(px/ms)は EMA で平滑化。生の値はノイズだらけで揺れ(かくつき)の原因になる。
+      // 横は敏感め(velSmoothX)、縦は控えめに平滑化して「左右のぷるん」を主役にする
       const dt = Math.max(deltaMs, 1)
       const vx = (pendingX - prevX) / dt
       const vy = (pendingY - prevY) / dt
       prevX = pendingX
       prevY = pendingY
-      smoothVX += (vx - smoothVX) * 0.25
-      smoothVY += (vy - smoothVY) * 0.25
-      // 速度が大きいほど潰す。上限は JELLY.squashMax(潰しすぎると不気味)
-      const speed = Math.min(Math.hypot(smoothVX, smoothVY), 2)
-      const squash = (speed / 2) * JELLY.squashMax
-      quickScaleX(1 + squash)
-      quickScaleY(1 - squash)
-      quickRot(gsap.utils.clamp(-16, 16, smoothVX * 24))
+      smoothVX += (vx - smoothVX) * JELLY.velSmoothX
+      smoothVY += (vy - smoothVY) * JELLY.velSmoothY
+      // 速度→変形量。sqrt 応答で小さな速度を持ち上げ、軽い動きでも見えるぷるんにする
+      const cap = JELLY.squashSpeedCap
+      const hAmt = Math.min(1, Math.sqrt(Math.abs(smoothVX) / cap)) * JELLY.squashMax
+      const vAmt = Math.min(1, Math.sqrt(Math.abs(smoothVY) / cap)) * JELLY.squashMax
+      // 進行方向へ伸び、直交方向に潰れる(横移動なら横に伸びて縦に潰れる)
+      quickScaleX(1 + hAmt - vAmt)
+      quickScaleY(1 + vAmt - hAmt)
+      quickRot(gsap.utils.clamp(-JELLY.rotMax, JELLY.rotMax, smoothVX * JELLY.rotGain))
     }
     gsap.ticker.add(tickerFn)
   }
@@ -205,6 +208,17 @@ export function useMoppoMotion(bodyRef) {
   }
 
   return { startFollow, followTo, returnHome, squishPop, sneezeAt, sleepSequence, cancelSleep, wakeStartle, sleepBreathe, breathe }
+}
+
+// ボタン等を「ぷにっ」と潰して戻す共通ヘルパ(トグル/チップのタップ演出用)。
+// 押した瞬間に横へ伸びて縦に潰れ、elastic で数回ぷるんと揺れて戻る
+export function jellyTap(el) {
+  if (!el) return
+  gsap.killTweensOf(el)
+  return gsap
+    .timeline()
+    .to(el, { scaleX: 1.14, scaleY: 0.82, duration: 0.09, ease: 'power2.out', transformOrigin: '50% 100%' })
+    .to(el, { scaleX: 1, scaleY: 1, duration: 0.85, ease: JELLY.returnEase })
 }
 
 // コインやカードを「ぷるん」と出す共通ヘルパ(TalkFan / DropZones / SneezeModal 用)
