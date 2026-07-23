@@ -109,8 +109,8 @@ export function useMoppoMotion(bodyRef) {
   }
 
   // くしゃみ一式: 画面中央へ移動 → 出そうで出ない予備動作 → 大きく吸って → ヘックシュン!
-  // onBurst のタイミングで親が提案カードを出す(くしゃみで店が飛んできた演出)
-  const sneezeAt = (dx, dy, { onBurst, onDone } = {}) => {
+  // onCue で節目を親に知らせる(セリフ演出用)。onBurst のタイミングで提案カードを出す
+  const sneezeAt = (dx, dy, { onCue, onBurst, onDone } = {}) => {
     const el = bodyRef.value
     if (!el) return
     stopFollow()
@@ -118,15 +118,21 @@ export function useMoppoMotion(bodyRef) {
     // 中央へふわっと移動
     tl.to(el, { x: dx, y: dy, scaleX: 1, scaleY: 1, rotation: 0, duration: 0.55, ease: 'power2.inOut', overwrite: 'auto' })
     // 予備動作1: ふ…ふ…(小さくのけぞって戻る)
+    tl.add(() => onCue?.('tease1'))
     tl.to(el, { rotation: -4, scaleY: 1.05, transformOrigin: '50% 90%', duration: 0.3, ease: 'power1.out' })
     tl.to(el, { rotation: -1, scaleY: 1.0, duration: 0.24, ease: 'power1.inOut' })
     // 予備動作2: もう少し大きく…出ない…
+    tl.add(() => onCue?.('tease2'))
     tl.to(el, { rotation: -8, scaleY: 1.1, scaleX: 0.96, duration: 0.32, ease: 'power1.out' })
     tl.to(el, { rotation: -3, scaleY: 1.02, scaleX: 1, duration: 0.26, ease: 'power1.inOut' })
     // 大きく吸い込む(ため)
+    tl.add(() => onCue?.('inhale'))
     tl.to(el, { rotation: -14, scaleY: 1.2, scaleX: 0.88, y: dy - 10, duration: 0.42, ease: 'power2.out' })
     // 一瞬止めて(出るぞ出るぞ)…ヘックシュン! 前方へ弾ける
-    tl.add(() => onBurst?.(), '+=0.12')
+    tl.add(() => {
+      onCue?.('burst')
+      onBurst?.()
+    }, '+=0.12')
     tl.to(el, { rotation: 12, scaleY: 0.68, scaleX: 1.36, y: dy + 12, duration: 0.13, ease: 'power3.in' })
     tl.to(el, { rotation: 0, scaleY: 1, scaleX: 1, y: dy, duration: 1.0, ease: JELLY.returnEase })
     return tl

@@ -112,15 +112,19 @@
           </g>
         </g>
       </svg>
+
+      <!-- セリフ吹き出し(はっくしょん！等)。モッポと一緒に動く -->
+      <div v-if="speech" ref="speechEl" class="speech" :class="{ big: speechBig }">{{ speech }}</div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, ref, useTemplateRef, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, useTemplateRef, watch } from 'vue'
 import gsap from 'gsap'
 import { useMoppoGesture } from '../../composables/useMoppoGesture'
 import { useMoppoMotion } from '../../composables/useMoppoMotion'
+import { JELLY, SPEECH } from '../../constants/hubConfig'
 
 const props = defineProps({
   // idle | talking | happy | sleepy | asleep | grabbed | sneeze | startled
@@ -208,6 +212,40 @@ const blinkOnce = () => {
   gsap.to(eyesEl.value, { scaleY: 0.1, transformOrigin: '50% 51%', duration: 0.07, yoyo: true, repeat: 1 })
 }
 
+// ---- セリフ吹き出し ----
+const speech = ref(null)
+const speechBig = ref(false)
+const speechEl = ref(null)
+let speechHide = null
+const say = async (text, holdMs = 900, { big = false } = {}) => {
+  speechHide?.kill()
+  speech.value = text
+  speechBig.value = big
+  await nextTick()
+  if (speechEl.value) {
+    gsap.fromTo(
+      speechEl.value,
+      { scale: 0, opacity: 0 },
+      { scale: 1, opacity: 1, duration: 0.45, ease: JELLY.popEase, transformOrigin: '10% 100%', overwrite: 'auto' },
+    )
+  }
+  speechHide = gsap.delayedCall(holdMs / 1000, () => {
+    if (!speechEl.value) {
+      speech.value = null
+      return
+    }
+    gsap.to(speechEl.value, {
+      scale: 0.5,
+      opacity: 0,
+      duration: 0.2,
+      ease: 'power2.in',
+      onComplete: () => {
+        speech.value = null
+      },
+    })
+  })
+}
+
 // ---- はなす中の口ぱくぱくループ ----
 let talkTween = null
 watch(face, async (f) => {
@@ -271,8 +309,22 @@ const returnHome = (onDone) => {
 }
 const squishPop = () => motion.squishPop()
 
-// くしゃみ: 中央へ移動→予備動作→ヘックシュン(onBurst でカードを出す)
-const playSneezeAt = (dx, dy, callbacks) => motion.sneezeAt(dx, dy, callbacks)
+// くしゃみ: 中央へ移動→予備動作→ヘックシュン(onBurst でカードを出す)。節目ごとにセリフ
+const SNEEZE_LINES = {
+  tease1: [SPEECH.sneezeTease1, 600],
+  tease2: [SPEECH.sneezeTease2, 700],
+  inhale: [SPEECH.sneezeInhale, 700],
+  burst: [SPEECH.sneezeBurst, 1500],
+}
+const playSneezeAt = (dx, dy, { onBurst, onDone } = {}) =>
+  motion.sneezeAt(dx, dy, {
+    onCue: (cue) => {
+      const line = SNEEZE_LINES[cue]
+      if (line) say(line[0], line[1], { big: cue === 'burst' })
+    },
+    onBurst,
+    onDone,
+  })
 
 // 眠りシーケンス(長押し保持中)。段階表情はここで切り替える
 let sleepTl = null
@@ -286,9 +338,12 @@ const startSleepSequence = (onAsleep) => {
       } else {
         stageFace.value = 'sleepy'
       }
+      if (stage === 'sleepy') say(SPEECH.drowsy, 1100)
+      if (stage === 'nod') say(SPEECH.drowsier, 1100)
     },
     onAsleep: () => {
       stageFace.value = null // 以降は親の expression('asleep') に委ねる
+      say(SPEECH.asleep, 1300)
       onAsleep?.()
     },
   })
@@ -306,6 +361,7 @@ const wakeStartle = (onDone) => {
   zzzTween?.kill()
   sleepBreatheTween?.kill()
   stageFace.value = 'startled'
+  say(SPEECH.wake, 1100, { big: true })
   if (bubbleEl.value) {
     bubbleTween?.kill()
     gsap.to(bubbleEl.value, {
@@ -368,6 +424,24 @@ defineExpose({ returnHome, squishPop, playSneezeAt, startSleepSequence, cancelSl
 }
 .zzz {
   font-family: var(--hub-font);
+}
+.speech {
+  position: absolute;
+  bottom: 92%;
+  left: 62%;
+  padding: 5px 11px;
+  background: var(--hub-pill-bg);
+  border-radius: 14px 14px 14px 4px; /* 左下だけ尖らせてしっぽにする */
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.14);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--hub-ink);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.speech.big {
+  font-size: 16px;
+  color: #c0503f;
 }
 .ring {
   position: absolute;

@@ -13,6 +13,7 @@ import {
   SHAKE_REVERSALS,
   SHAKE_WINDOW_MS,
   SHAKE_MIN_SPEED,
+  SHAKE_MIN_SWING_PX,
 } from '../constants/hubConfig'
 
 /**
@@ -39,6 +40,7 @@ export function useMoppoGesture(targetRef, handlers) {
   let lastMoveX = 0
   let lastMoveTime = 0
   let lastDirection = 0
+  let swingDist = 0 // 今の方向に振れてからの累計距離(小さい振りは反転に数えない)
   let reversalTimes = []
 
   let longPressTimer = null
@@ -68,6 +70,7 @@ export function useMoppoGesture(targetRef, handlers) {
     grabbed = false
     consumedBy = null
     lastDirection = 0
+    swingDist = 0
     reversalTimes = []
   }
 
@@ -82,6 +85,7 @@ export function useMoppoGesture(targetRef, handlers) {
     lastMoveX = e.clientX
     lastMoveTime = startTime
     lastDirection = 0
+    swingDist = 0
     reversalTimes = []
     try {
       // 画面外まで持って行かれてもイベントが続くように(失敗しても window 追跡で拾える)
@@ -115,7 +119,8 @@ export function useMoppoGesture(targetRef, handlers) {
     detectShake(e.clientX)
   }
 
-  // 掴んだまま左右反転 SHAKE_REVERSALS 回 / SHAKE_WINDOW_MS 以内でくしゃみ
+  // 掴んだまま「大きく素早い」左右反転が SHAKE_REVERSALS 回 / SHAKE_WINDOW_MS 以内でくしゃみ。
+  // ただの左右移動や方向転換で誤爆しないよう、1振りの幅(SHAKE_MIN_SWING_PX)も要求する
   const detectShake = (x) => {
     const now = performance.now()
     const moveX = x - lastMoveX
@@ -127,17 +132,25 @@ export function useMoppoGesture(targetRef, handlers) {
     if (speed < SHAKE_MIN_SPEED) return // ゆっくりの往復では発火させない
 
     const direction = Math.sign(moveX)
-    if (direction !== 0 && lastDirection !== 0 && direction !== lastDirection) {
-      reversalTimes.push(now)
-      reversalTimes = reversalTimes.filter((t) => now - t <= SHAKE_WINDOW_MS)
-      if (reversalTimes.length >= SHAKE_REVERSALS) {
-        consumedBy = 'shake'
-        clearLongPress()
-        handlers.onShake?.()
-        return
+    if (direction === 0) return
+
+    if (lastDirection === 0 || direction === lastDirection) {
+      swingDist += Math.abs(moveX) // 同じ方向へ振り続けている
+    } else {
+      // 方向転換: 直前の振りが十分な幅だった時だけ「反転」として数える
+      if (swingDist >= SHAKE_MIN_SWING_PX) {
+        reversalTimes.push(now)
+        reversalTimes = reversalTimes.filter((t) => now - t <= SHAKE_WINDOW_MS)
+        if (reversalTimes.length >= SHAKE_REVERSALS) {
+          consumedBy = 'shake'
+          clearLongPress()
+          handlers.onShake?.()
+          return
+        }
       }
+      swingDist = Math.abs(moveX)
     }
-    if (direction !== 0) lastDirection = direction
+    lastDirection = direction
   }
 
   const onPointerUp = (e) => {

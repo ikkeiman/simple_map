@@ -12,7 +12,7 @@
       class="gmap"
     >
       <template v-if="!night">
-        <CustomMarker v-for="pin in DAY_PINS" :key="pin.id" :options="{ position: pin, anchorPoint: 'CENTER' }">
+        <CustomMarker v-for="pin in visibleDayPins" :key="pin.id" :options="{ position: pin, anchorPoint: 'CENTER' }">
           <div class="spot-pin"><span class="dot" :style="{ background: pin.priority }"></span><span class="lbl">{{ pin.label }}</span></div>
         </CustomMarker>
         <CustomMarker :options="{ position: CURRENT_LOCATION, anchorPoint: 'CENTER' }">
@@ -37,7 +37,7 @@
       <div class="road h2"></div>
       <div class="river"></div>
       <template v-if="!night">
-        <div v-for="pin in DAY_PINS" :key="pin.id" class="spot-pin abs" :style="fracStyle(pin)">
+        <div v-for="pin in visibleDayPins" :key="pin.id" class="spot-pin abs" :style="fracStyle(pin)">
           <span class="dot" :style="{ background: pin.priority }"></span><span class="lbl">{{ pin.label }}</span>
         </div>
         <div class="current-loc abs" :style="fracStyle(CURRENT_LOCATION)"></div>
@@ -61,6 +61,7 @@
 
 <script setup>
 // 地図を描くだけのレイヤー。ジェスチャーや状態遷移は持たない
+import { computed } from 'vue'
 import { GoogleMap, CustomMarker } from 'vue3-google-map'
 import {
   MAP_CENTER,
@@ -73,11 +74,16 @@ import {
   PRIORITY_LEGEND,
 } from '../../constants/hubConfig'
 
-defineProps({
+const props = defineProps({
   night: { type: Boolean, default: false },
+  visiblePriorities: { type: Array, default: null }, // 絞り込み。null なら全表示
 })
 
 const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY ?? ''
+
+const visibleDayPins = computed(() =>
+  props.visiblePriorities ? DAY_PINS.filter((pin) => props.visiblePriorities.includes(pin.priority)) : DAY_PINS,
+)
 
 const fracStyle = (pin) => ({ left: `${pin.xFrac * 100}%`, top: `${pin.yFrac * 100}%` })
 </script>
@@ -96,6 +102,15 @@ const fracStyle = (pin) => ({ left: `${pin.xFrac * 100}%`, top: `${pin.yFrac * 1
 .gmap {
   width: 100%;
   height: 100%;
+}
+/* Google Maps 下部のロゴ・利用規約・誤り報告リンクを隠す(プロトタイプ用途。
+   公開リリース時は Google の利用規約上、帰属表示が必要な点に注意) */
+.gmap :deep(.gm-style-cc) {
+  display: none !important;
+}
+.gmap :deep(a[href^='https://maps.google']),
+.gmap :deep(a[href^='https://www.google.com/maps']) {
+  display: none !important;
 }
 
 /* --- フォールバック地図(色は昼夜で切替) --- */

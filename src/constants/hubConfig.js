@@ -5,9 +5,12 @@
 export const TAP_MAX_MOVE_PX = 8 // これ未満の移動なら「タップ」。指ブレの許容量
 export const TAP_MAX_MS = 250 // 押下がこれ未満ならタップ扱い
 export const LONG_PRESS_MS = 520 // 長押し = よるモード。誤爆しない程度に短く
-export const SHAKE_REVERSALS = 3 // 掴んだまま左右反転がこの回数以上でくしゃみ
-export const SHAKE_WINDOW_MS = 600 // 反転回数を数えるローリング時間窓
-export const SHAKE_MIN_SPEED = 0.35 // px/ms。ゆっくり往復しただけでは発火させない
+// くしゃみ(シェイク)は「意図して大きく素早く振った」時だけ。普通のドラッグの
+// 方向転換で誤爆しないよう、回数・速度に加えて1振りの幅も要求する
+export const SHAKE_REVERSALS = 4 // 掴んだまま左右反転がこの回数以上でくしゃみ
+export const SHAKE_WINDOW_MS = 700 // 反転回数を数えるローリング時間窓
+export const SHAKE_MIN_SPEED = 0.5 // px/ms。ゆっくり往復しただけでは発火させない
+export const SHAKE_MIN_SWING_PX = 28 // 1振りがこの幅未満なら反転として数えない(ただの揺れ)
 
 // ---- ドロップゾーン ----
 // つかんだ瞬間、画面の左右端(モッポと同じ高さ)に出る。ゾーンにモッポを重ねると
@@ -100,13 +103,17 @@ export const DAY_PINS = [
 ]
 export const CURRENT_LOCATION = { lat: 35.1598, lng: 136.9082, xFrac: 0.7, yFrac: 0.44 }
 
-// 優先度凡例(1a)
+// 優先度凡例(1a)。絞り込みドロップダウンの項目も兼ねる
 export const PRIORITY_LEGEND = [
   { label: '絶対', color: '#cf6a4d' },
   { label: '出来れば', color: '#d6a23c' },
   { label: '時間あれば', color: '#4e9e6a' },
   { label: '行った', color: '#bcb6cf' },
 ]
+
+// ---- ピンの登録先(日付) ----
+export const DEFAULT_PIN_DATE = { y: 2026, m: 10, d: 20 } // ワイヤーフレーム準拠の初期値
+export const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土']
 
 // よるモード: モッポが見つけた店(光るピン)。それ以外は暗いまま
 export const NIGHT_PINS = [
@@ -145,6 +152,32 @@ export const DEFAULT_FAVORITES = [
   { icon: '🍵', label: '大須', screen: 'place' },
   null,
 ]
+
+// ---- くしゃみの飛沫演出 ----
+// ヘックシュン! と同時に 💦💧 が飛び散り、数滴が「画面(ガラス)に貼り付いて」
+// 一拍おいてからスーッと垂れて消える
+export const SNEEZE_SPLASH = {
+  sprayCount: 10, // 飛び散る飛沫の数
+  sprayEmojis: ['💦', '💧'],
+  stickCount: 3, // 画面に貼り付く滴の数
+  stickSpreadX: 110, // 貼り付き位置のばらつき(顔中心から左右px)
+  stickSpreadY: [-50, 70], // 同、上下方向の範囲
+  dripDelay: 0.75, // 貼り付いてから垂れ始めるまでの間(秒)
+  dripDistance: [130, 230], // 垂れる距離(px)。滴ごとにこの範囲でランダム
+  dripDuration: [2.2, 3.4], // 垂れる時間(秒)。ゆっくりスーッと
+}
+
+// ---- モッポのセリフ(吹き出し演出) ----
+export const SPEECH = {
+  sneezeTease1: 'ふ…',
+  sneezeTease2: 'ふぇ…',
+  sneezeInhale: 'ふぇぇぇ…！',
+  sneezeBurst: 'はっくしょん！！',
+  drowsy: 'ふぁ〜…',
+  drowsier: 'ねむ……',
+  asleep: 'すや……',
+  wake: 'はっ！？',
+}
 
 // ---- くしゃみ提案の候補(モック) ----
 export const SNEEZE_CANDIDATES = [

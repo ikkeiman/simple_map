@@ -2,8 +2,8 @@
   <!-- モッポHub 全体のコンテナ = 状態機械。
        レイヤー: 地図 → 検索 → ★ → ドロップゾーン → モッポ → メニュー/モーダル -->
   <div ref="hubEl" class="moppo-hub">
-    <MapCanvas :night="isNight" />
-    <SearchBar v-if="!isNight" />
+    <MapCanvas :night="isNight" :visible-priorities="visiblePriorities" />
+    <SearchBar v-if="!isNight" @filter-change="visiblePriorities = $event" />
 
     <FavoriteBar
       v-if="!isNight"
@@ -45,6 +45,7 @@
     <TalkFan v-if="hubState === 'talk'" @select="goScreen" @close="closeMenu" />
 
     <SneezeModal v-if="sneezeModalVisible" @go="onSneezeGo" @close="closeMenu" />
+    <SneezeSplash v-if="splashOrigin" :origin="splashOrigin" @done="splashOrigin = null" />
     <AllScreensSheet v-if="sheetMode" :mode="sheetMode" @select="onSheetSelect" @close="closeSheet" />
   </div>
 </template>
@@ -59,6 +60,7 @@ import DropZones from './DropZones.vue'
 import Moppo from './Moppo.vue'
 import TalkFan from './TalkFan.vue'
 import SneezeModal from './SneezeModal.vue'
+import SneezeSplash from './SneezeSplash.vue'
 import AllScreensSheet from './AllScreensSheet.vue'
 import gsap from 'gsap'
 import {
@@ -71,6 +73,7 @@ import {
   SCREENS,
   RECORD_ITEMS,
   PLAY_ITEMS,
+  PRIORITY_LEGEND,
 } from '../../constants/hubConfig'
 
 const router = useRouter()
@@ -81,6 +84,8 @@ const favBarRef = ref(null)
 // idle | grabbed | talk | drowsy | night | sneeze
 const hubState = ref('idle')
 const sneezeModalVisible = ref(false)
+const splashOrigin = ref(null) // くしゃみ飛沫の発生点(モッポの顔位置)
+const visiblePriorities = ref(PRIORITY_LEGEND.map((item) => item.color)) // 絞り込み(初期は全表示)
 const sheetMode = ref(null) // null | 'browse' | 'pick'
 const pendingSlot = ref(null)
 
@@ -241,6 +246,8 @@ const onShake = () => {
   const dy = rect.top + rect.height * 0.36 - home.y
   moppoRef.value?.playSneezeAt(dx, dy, {
     onBurst: () => {
+      // ヘックシュン! と同時に飛沫が飛び、カードが出る
+      splashOrigin.value = { x: rect.width / 2, y: rect.height * 0.36 + 16 }
       sneezeModalVisible.value = true
     },
   })
