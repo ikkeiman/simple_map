@@ -29,6 +29,37 @@ export const ICON_LAYOUT = [
 // 展開中に出す方向ラベルの白ピル位置(参考画像のきろくピル)
 export const PILL_LAYOUT = { xFrac: 0.19, dy: -120 }
 export const ICON_HIT = 46 // アイコンの当たり判定半径。コイン(直径60)より少し広め
+// 展開メニューの配置: 角(あそぶ=右下 / きろく=左下)を中心にした四分円の弧にアイコンを並べる。
+// angles = 下辺からの角度(度。小さいほど下寄り)。radius = 角からアイコン中心までの距離(px)。
+export const MENU_ARC = {
+  radius: 200, // 角からアイコンまでの半径(角にぐっと寄せる)
+  angles: [24, 48, 72], // 3点の間隔を広げて(前より約2〜3倍)ゆったり
+  pill: { radius: 115, angle: 78 }, // 方向ラベル(きろく/あそぶ)は画面端・少し上へ(アイコンと被らない)
+  glowFrac: 1.2, // グロー半径 = アイコン最遠距離 × これ(>1 = 円はアイコンより大きく、アイコンは円の内側に沿う)
+}
+// 展開グロー(MenuBlob)の出現。角(あそぶ=右下 / きろく=左下)を原点に、小さく畳んだ状態から
+// スケール＋フェードで「じんわり」広がる。0.5秒前後で、うるさくない power2.out。
+export const MENU_BLOB = {
+  revealDur: 0.5, // 角から広がりきるまで(秒)
+  revealScale: 0.35, // 出現開始時のスケール(角に畳まれた状態)
+}
+// つかんだ直後は雲の点線を出さず、席の高さからこれ以上「上」へドラッグした時だけ出す
+export const CLOUD_REVEAL_OFFSET = 26
+// 展開メニューを照らす「置き型スポットライト」。低く構えた台座から真上へ光を放つ
+export const SPOTLIGHT = {
+  height: 62, // フィクスチャの高さ(px。台座→レンズ)。縦に長すぎない、ずんぐり型
+  floorOffset: 40, // 席の高さから床(台座)までの下げ量
+  spreadPad: 0.34, // 光の円錐の角度余白(rad)。アイコンをゆったり包む
+  minSpread: 0.55, // 円錐の最小半開き角(rad)
+  maxSpread: 1.2, // 最大半開き角(rad)。広がりすぎて横に漏れないよう上限
+  reachPad: 46, // いちばん遠いアイコンより先まで光を伸ばす量
+}
+// アイコン吸着(磁力): ドラッグ中、モッポがアイコンに近づくほど自動で引き寄せられる(気持ちいい演出)
+export const ICON_PULL = {
+  radius: 96, // アイコン中心からこの距離以内で吸着開始
+  max: 0.82, // 最大ブレンド率(1=完全スナップ)。近いほど強く効く
+  ease: 1.6, // 近づいた時の効きの立ち上がり(>1で「ぐいっ」と加速)
+}
 
 // ---- ドラッグ中の「指よけ」先行(のぞき)オフセット ----
 // つまむと指がモッポを隠すので、指の“外”へモッポを出す。方向は「掴んだ位置からの相対」ではなく
@@ -174,6 +205,8 @@ export const SEAT_FRAC = { x: 0.5, y: 0.92 } // 席(モッポ定位置)の画面
 // 靄セルは「ジオ座標」に固定する。1セルの緯度・経度幅(スマホ幅で 3×5 が概ね収まる値)。
 // Google Maps の projection で画面pxへ投影し、パン/ズームに追従させる。
 export const FOG_MESH = { dLat: 0.005, dLng: 0.006 }
+// 靄ブロックの点滅(常時アンビエント。生きている感じ)。セル毎に位相をずらす
+export const FOG_PULSE = { min: 0.78, period: 3.2, stagger: 0.4 }
 // メッシュ原点 = 北西角。地図中心を 3×5 で囲むように配置する
 export const FOG_ORIGIN = {
   lat: MAP_CENTER.lat + (FOG_GRID.rows / 2) * FOG_MESH.dLat,
@@ -253,6 +286,7 @@ export const EXPLORE_SPEECH = {
   welcome: 'ただいま！{area}で {n}けん 見つけたよ',
   fogToast: '☀️ この街の 霧が すこし 晴れたよ',
   hintGrab: 'モッポを つまんで、靄の上で はなそう',
+  cloudNav: '← きろく　あそぶ →　　☁️ 上で ひらく', // つかんだ時のナビ(左右=メニュー / 上=雲で開拓)
   dropHere: 'ここに はなす',
   somebody: 'だれかの モッポが 探索中',
 }
@@ -274,10 +308,68 @@ export const SCREENS = {
 
 // タップ=はなす(対話)の4項目。一覧や設定を混ぜない(中央=対話の意味を守る)
 export const TALK_ITEMS = ['omakase', 'know', 'meeting', 'wish']
+// 扇のチップは必ず1行。長い名前は短縮する(例: モッポの願い→願い)
+export const TALK_LABELS_SHORT = { omakase: 'おまかせ', know: '知りたい', meeting: '会議', wish: '願い' }
+// はなす扇メニュー(ドラッグ選択)。モッポ中心の同一半径(親指圏)の円弧上に等角度配置し、
+// モッポを近づけると項目が膨らむ(視覚吸着)。判定は生座標＋ヒステリシスで発振を防ぐ。
+export const TALK_FAN = {
+  radius: 150, // モッポ中心から各項目までの半径(親指圏 140〜170)
+  spreadDeg: 116, // 扇の開き角。centerDeg を中心に等角度で4つ並べる
+  centerDeg: 90, // 扇の中心方向(90=真上)
+  coin: 64, // コイン直径(見た目px)
+  itemHit: 44, // 判定半径。見た目半径(32)の約1.3倍。モッポの体基準なので広げすぎない
+  hitExit: 15, // ヒステリシス: 入りは <itemHit、抜けは >itemHit+これ
+  snapScale: 1.18, // 近づいた時の項目の最大スケール(視覚吸着)
+  snapNearPx: 96, // この距離から徐々に膨らみ始める
+  popStagger: 0.04, // 出現の stagger(back.out で順に)
+  hopBack: 0.4, // 選択時、モッポが項目方向へ跳ねる割合(その後ホームへ)
+  hapticMs: 10, // 判定圏の出入りで鳴らす短い振動
+}
 // 左ドラッグ=きろくの3項目
 export const RECORD_ITEMS = ['zine', 'yearmap', 'settings']
 // 右ドラッグ=あそぶの3項目
 export const PLAY_ITEMS = ['bingo', 'fest', 'route']
+
+// ---- 「ぜんぶ」画面(1c) ----
+// よく遊ぶ駅(モック)。上限5・現在3件。チップ/追加/「›」は今回は表示専用(実挙動なし)。
+export const STATIONS_MAX = 5
+export const DEFAULT_STATIONS = [
+  { id: 'st1', label: '○○駅' },
+  { id: 'st2', label: '△△駅' },
+  { id: 'st3', label: '□□公園前駅' },
+]
+// 付箋(sticky note)の地色パレット。SCREENS を index 順で循環割り当てし、カラフルに見せる。
+// 淡いパステル(ゼリー質感の淡色路線)。彩度は抑えめで、上に文字が乗っても読める明度。
+export const STICKY_PALETTE = [
+  { bg: '#fbe7a2', ink: '#7a6320' }, // 黄
+  { bg: '#f6c7cf', ink: '#8a4550' }, // 桃
+  { bg: '#f7cfa0', ink: '#8a5a2c' }, // 橙
+  { bg: '#bcd6ef', ink: '#3a5a7a' }, // 青
+  { bg: '#d6cbe9', ink: '#5a4a80' }, // 紫
+  { bg: '#dcd8cf', ink: '#5f584c' }, // 灰
+  { bg: '#c2e2c0', ink: '#3f6a3f' }, // 緑
+  { bg: '#f4d4b0', ink: '#8a5f34' }, // 杏
+]
+// 付箋の傾き(deg)。index 順で循環。ランダムに見えて毎回同じ = 落ち着いた「貼った感」。
+export const STICKY_TILT = [-2.5, 1.5, -1, 2, -1.8, 1.2, -2, 1]
+// 付箋の出現モーション(GSAP)。うざくない程度の軽い stagger。elastic 等の強い跳ねは使わない。
+export const STICKY_MOTION = {
+  y: 10, // 下から持ち上がる量(px)
+  scaleFrom: 0.96, // 少しだけ小さい状態から
+  duration: 0.32, // 1枚の尺(秒)
+  stagger: 0.03, // 1枚ずつずらす間隔(秒)
+  ease: 'power2.out',
+}
+// 開くたびに「完全ランダムで数枚だけ」右下の角が軽くめくれる。
+// 付箋本体は動かさない(傾きは静止したまま)。めくれは角を支点に大きさが脈動するだけなので、
+// 位置がズレることは原理的に起きない(transform-origin = 右下角に固定)。
+export const STICKY_PEEL = {
+  minCount: 4, // めくれる枚数の下限
+  maxCount: 6, // 上限(実際はこの範囲でランダム)
+  scale: 1.3, // めくれの最大倍率(1=通常の角。大きいほど深くめくれて見える)
+  durMin: 1.8, // 1往復の尺(秒)の下限
+  durMax: 3.0, // 上限(枚ごとにランダム = 位相がずれて自然)
+}
 
 // ---- ★お気に入り ----
 export const FAVORITES_STORAGE_KEY = 'moppo-hub-favs'

@@ -3,12 +3,13 @@
        モッポを重ねるとその側のアイコンが斜め配置で展開し、アイコンの上で離すと遷移。
        位置・当たり判定はすべて親(MoppoHub)が計算する。ここは描くだけ -->
   <div class="drop-zones">
+    <!-- 角中心のグロー(MenuBlob)は親(MoppoHub)が描画する。ここはゾーン/ピル/アイコンだけ -->
     <div
       v-for="zone in zoneList"
       :key="zone.side"
       ref="zoneEls"
       class="zone"
-      :class="[zone.side, { active: activeZone === zone.side, expanded: expandedSide === zone.side }]"
+      :class="[zone.side, { active: activeZone === zone.side, expanded: expandedSide === zone.side, hushed: hiddenSide === zone.side }]"
       :style="{ left: zone.x + 'px', top: zone.y + 'px' }"
     >
       <div class="coin" :style="{ width: ZONE_RADIUS * 2 + 'px', height: ZONE_RADIUS * 2 + 'px' }"></div>
@@ -61,21 +62,11 @@ const pillEl = useTemplateRef('pillEl')
 
 onMounted(() => jellyPopIn(zoneEls.value))
 
-// モッポが重なったゾーンはぷくっと膨らむ
-watch(
-  () => props.activeZone,
-  (side) => {
-    zoneEls.value?.forEach((el, i) => {
-      const isActive = zoneList.value[i].side === side
-      gsap.to(el, {
-        scale: isActive ? 1.25 : 1,
-        duration: isActive ? 0.35 : 0.6,
-        ease: JELLY.popEase,
-        overwrite: 'auto',
-      })
-    })
-  },
-)
+// 触れた側(展開中の側。展開前の一瞬は重なっている側)の点線ゾーンは .hushed で要素ごと消す。
+// アイコンへ指を移して activeZone が外れても、expandedSide が生きている間は消えたまま。
+// 反対側のゾーンは選択肢として残す。CSS の !important で、出現ポップ(jellyPopIn が付ける
+// inline opacity)に打ち勝って確実に隠す。フェードは .zone の transition が担う。
+const hiddenSide = computed(() => props.expandedSide ?? props.activeZone)
 
 // 展開側が変わったらアイコンとピルをぷるんと出し直す
 watch(
@@ -125,6 +116,14 @@ watch(
   align-items: center;
   gap: 4px;
 }
+.zone {
+  transition: opacity 0.26s ease, visibility 0.26s ease;
+}
+/* 触れた側(hushed)は要素ごと消す。!important で出現ポップの inline opacity に打ち勝つ */
+.zone.hushed {
+  opacity: 0 !important;
+  visibility: hidden !important;
+}
 .coin {
   border-radius: 50%;
   border: 2px dashed;
@@ -148,9 +147,7 @@ watch(
 .icon.hovered .coin {
   box-shadow: 0 5px 16px rgba(0, 0, 0, 0.2);
 }
-.zone.expanded {
-  opacity: 0.35; /* 展開中は受け皿を控えめに(主役はアイコンとピル) */
-}
+/* 展開中(=触れた側)のゾーンは JS(hiddenSide watch)で要素ごと消す。反対側は残す。 */
 .label {
   font-size: 10px;
   font-weight: 700;
@@ -179,9 +176,19 @@ watch(
   color: var(--hub-play);
 }
 .icon .coin {
-  width: 60px;
-  height: 60px;
+  width: 62px;
+  height: 62px;
   font-size: 26px;
+}
+/* 展開アイコンは白い実線コイン＋影で、同色のグローに埋もれず浮かせる(同化対策) */
+.icon.left .coin,
+.icon.right .coin {
+  background-color: #fffdf8;
+  border-style: solid;
+  box-shadow: 0 6px 16px rgba(60, 50, 35, 0.3);
+}
+.icon.hovered .coin {
+  box-shadow: 0 9px 22px rgba(60, 50, 35, 0.4);
 }
 .icon .clab {
   font-size: 11px;

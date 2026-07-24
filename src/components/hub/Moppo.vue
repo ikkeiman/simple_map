@@ -131,6 +131,7 @@ import {
   DRAG_PEEK_LERP,
   DRAG_PEEK_MIN_MOVE,
   DRAG_PEEK_DIR_SMOOTH,
+  ICON_PULL,
 } from '../../constants/hubConfig'
 
 const props = defineProps({
@@ -138,6 +139,7 @@ const props = defineProps({
   expression: { type: String, default: 'idle' },
   night: { type: Boolean, default: false },
   ring: { type: Boolean, default: false }, // 待機時の「つかめるよ」点線リング
+  attractors: { type: Array, default: () => [] }, // アイコン吸着の対象(client座標)。近づくと引き寄せる
 })
 const emit = defineEmits(['grab', 'drag', 'release', 'tap', 'long-press', 'long-press-end', 'shake'])
 
@@ -168,6 +170,7 @@ let peekDirX = 0
 let peekDirY = 0
 let lastDx = 0
 let lastDy = 0
+let homeC = null // つかんだ瞬間のホーム中心(client)。アイコン吸着の座標変換に使う
 const resetPeek = () => {
   peekX = peekY = peekDirX = peekDirY = lastDx = lastDy = 0
 }
@@ -207,6 +210,7 @@ const liftShadow = (lifted) => {
 const gesture = useMoppoGesture(rootEl, {
   onGrab: () => {
     resetPeek()
+    homeC = getHomeCenter()
     motion.startFollow()
     liftShadow(true)
     emit('grab')
@@ -215,8 +219,34 @@ const gesture = useMoppoGesture(rootEl, {
     // 指の外へモッポを出す(先行)。ホバー判定もモッポ基準にするため、
     // ずらした後のモッポ中心座標(mx/my)を一緒に渡す
     const { x: ox, y: oy } = updatePeek(p.dx, p.dy)
-    motion.followTo(p.dx + ox, p.dy + oy)
-    emit('drag', { ...p, mx: p.x + ox, my: p.y + oy })
+    let tfx = p.dx + ox
+    let tfy = p.dy + oy
+    let mx = p.x + ox
+    let my = p.y + oy
+    // アイコン吸着: いちばん近いアイコンへ、近いほど強く引き寄せる(気持ちいいスナップ)
+    if (props.attractors.length && homeC) {
+      const cxC = homeC.x + tfx
+      const cyC = homeC.y + tfy
+      let best = null
+      let bestD = Infinity
+      for (const a of props.attractors) {
+        const d = Math.hypot(a.x - cxC, a.y - cyC)
+        if (d < bestD) {
+          bestD = d
+          best = a
+        }
+      }
+      if (best && bestD < ICON_PULL.radius) {
+        // 近いほど大きい k で、指の位置(tf)から対象アイコン(transform)へブレンド
+        const k = ICON_PULL.max * Math.pow(1 - bestD / ICON_PULL.radius, ICON_PULL.ease)
+        tfx += (best.x - homeC.x - tfx) * k
+        tfy += (best.y - homeC.y - tfy) * k
+        mx = homeC.x + tfx
+        my = homeC.y + tfy
+      }
+    }
+    motion.followTo(tfx, tfy)
+    emit('drag', { ...p, mx, my })
   },
   onRelease: (p) => {
     liftShadow(false)
@@ -442,8 +472,9 @@ const walkOut = (dx, dy, opts) => {
 }
 const stopWalk = () => motion.stopWalk()
 const tada = () => motion.tada()
+const hopToward = (dx, dy, ratio) => motion.hopToward(dx, dy, ratio)
 
-defineExpose({ returnHome, squishPop, playSneezeAt, startSleepSequence, cancelSleepSequence, wakeStartle, getHomeCenter, say, walkOut, stopWalk, tada })
+defineExpose({ returnHome, squishPop, playSneezeAt, startSleepSequence, cancelSleepSequence, wakeStartle, getHomeCenter, say, walkOut, stopWalk, tada, hopToward })
 </script>
 
 <style scoped>

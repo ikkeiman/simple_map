@@ -14,17 +14,15 @@
     <FogLayer
       :cells="exploration.cells.value"
       :rects="cellRects"
-      :stage="stage"
-      :grabbing="hubState === 'grabbed' && navBase === 'idle'"
+      :grabbing="cloudActive"
       :target-cell="targetFogCell"
-      :show-trail="hubState === 'grabbed' && navBase === 'idle'"
       :reveal-cell-id="exploration.justRevealed.value"
     />
 
     <SearchBar v-if="!isNight" @filter-change="visibleCategories = $event" />
 
     <FavoriteBar
-      v-if="!isNight"
+      v-if="!isNight && hubState !== 'talk'"
       ref="favBarRef"
       :sunk="hubState === 'grabbed'"
       @open-all="openSheet('browse')"
@@ -32,15 +30,25 @@
       @go="goScreen"
     />
 
-    <DropZones
-      v-if="hubState === 'grabbed' && zonePositions"
-      :zones="zonePositions"
-      :active-zone="activeZone"
-      :expanded-side="expandedSide"
-      :icons="iconPositions"
-      :hovered-icon="hoveredIcon"
-      :pill="pillPosition"
-    />
+    <!-- 展開メニューの角グロー。DropZones と違い hubState に縛られず、モッポを離した後も
+         残って「角へすぼむ」閉じ演出を最後まで再生できるよう、Hub 直下に置く(z=24=ゾーンの下) -->
+    <div class="glow-layer">
+      <Transition :css="false" @enter="onGlowEnter" @leave="onGlowLeave">
+        <MenuBlob v-if="glow" :key="glow.side" v-bind="glow" />
+      </Transition>
+    </div>
+
+    <Transition :css="false" @enter="onZonesEnter" @leave="onZonesLeave">
+      <DropZones
+        v-if="hubState === 'grabbed' && zonePositions"
+        :zones="zonePositions"
+        :active-zone="activeZone"
+        :expanded-side="expandedSide"
+        :icons="iconPositions"
+        :hovered-icon="hoveredIcon"
+        :pill="pillPosition"
+      />
+    </Transition>
 
     <!-- ⑨ るすのざぶとん。モッポが探索に出ている間、席で待つ。タップ/つかむでナビも起動 -->
     <SeatCushion v-if="moppoAway" @grab="onGrab" @drag="onDrag" @release="onRelease" @tap="onTap" />
@@ -50,7 +58,8 @@
       :expression="moppoExpression"
       :night="isNight"
       :ring="hubState === 'idle' && !isNight"
-      :style="{ pointerEvents: sneezeModalVisible || moppoAway ? 'none' : '' }"
+      :attractors="attractors"
+      :style="{ pointerEvents: sneezeModalVisible || moppoAway || hubState === 'talk' ? 'none' : '' }"
       @grab="onGrab"
       @drag="onDrag"
       @release="onRelease"
@@ -61,7 +70,13 @@
     />
 
     <div v-if="hubState === 'idle' && !isNight" class="hint-pill">モッポを タップ／つかむ</div>
-    <div v-if="hubState === 'grabbed' && navBase === 'idle'" class="hint-pill">{{ EXPLORE_SPEECH.hintGrab }}</div>
+    <!-- つかんだ時のナビ: 左右=きろく/あそぶ、上=雲でひらく。側を選ぶ/上へ行くと消える -->
+    <div
+      v-if="hubState === 'grabbed' && navBase === 'idle' && !expandedSide && !cloudActive"
+      class="hint-pill cloud-nav"
+    >
+      {{ EXPLORE_SPEECH.cloudNav }}
+    </div>
     <div v-if="hubState === 'exploring'" class="hint-pill">{{ awayText }}</div>
     <div v-if="isNight && hubState === 'night'" class="hint-pill night">タップで おこす</div>
 
@@ -72,7 +87,9 @@
       <div v-if="toastVisible" class="fog-toast">{{ EXPLORE_SPEECH.fogToast }}</div>
     </Transition>
 
-    <TalkFan v-if="hubState === 'talk'" @select="goScreen" @close="closeMenu" />
+    <!-- はなす: 地図＋検索を沈める暗幕(blur)。★枠は完全非表示(上の v-if)。モッポは暗幕の上=明るいまま -->
+    <div v-if="hubState === 'talk'" class="talk-dim" @pointerdown.self="closeMenu"></div>
+    <TalkFan v-if="hubState === 'talk'" :items="talkItems" @select="onTalkSelect" />
 
     <SneezeModal v-if="sneezeModalVisible" @go="onSneezeGo" @close="closeMenu" />
     <SneezeSplash v-if="splashOrigin" :origin="splashOrigin" @done="splashOrigin = null" />
@@ -88,6 +105,7 @@ import FogLayer from './FogLayer.vue'
 import SearchBar from './SearchBar.vue'
 import FavoriteBar from './FavoriteBar.vue'
 import DropZones from './DropZones.vue'
+import MenuBlob from './MenuBlob.vue'
 import SeatCushion from './SeatCushion.vue'
 import Moppo from './Moppo.vue'
 import TalkFan from './TalkFan.vue'
@@ -100,14 +118,17 @@ import { useMapProjection } from '../../composables/useMapProjection'
 import {
   ZONE_HIT,
   ZONE_EDGE_X,
-  ZONE_EDGE_MARGIN,
-  ICON_LAYOUT,
-  PILL_LAYOUT,
+  MENU_ARC,
   ICON_HIT,
+  MENU_BLOB,
   SCREENS,
   RECORD_ITEMS,
   PLAY_ITEMS,
+  TALK_ITEMS,
+  TALK_LABELS_SHORT,
+  TALK_FAN,
   FOG_GRID,
+  CLOUD_REVEAL_OFFSET,
   EXPLORE_DURATION_MS,
   EXPLORE_STORY_MIN,
   EXPLORE_TOAST_MS,
@@ -176,10 +197,32 @@ const pendingSlot = ref(null)
 // --- ドラッグ中のゾーン/アイコン状態 ---
 const zonePositions = ref(null)
 const stageSize = ref(null)
+const stageOffset = ref(null) // つかんだ瞬間の hub 左上(client)。アイコン吸着の座標変換に使う
 const activeZone = ref(null)
 const expandedSide = ref(null)
 const hoveredIcon = ref(null)
 const targetFogCell = ref(null) // いまモッポが重なっている靄セル id(開拓ターゲット)
+const cloudActive = ref(false) // モッポを席より上=雲の上へドラッグした(雲の点線を出す条件)
+
+// --- はなす扇(タップ選択。モッポは移動できない) ---
+const talkCenter = ref({ x: 0, y: 0 }) // 扇の中心(モッポ定位置。hub-local px)
+
+// 扇の項目配置: モッポ中心から同一半径・等角度の円弧上(hub-local px)
+const talkItems = computed(() => {
+  const n = TALK_ITEMS.length
+  const { radius, spreadDeg, centerDeg } = TALK_FAN
+  return TALK_ITEMS.map((id, i) => {
+    const deg = centerDeg - spreadDeg / 2 + (n > 1 ? (spreadDeg * i) / (n - 1) : 0)
+    const rad = (deg * Math.PI) / 180
+    return {
+      id,
+      icon: SCREENS[id].icon,
+      label: TALK_LABELS_SHORT[id] ?? SCREENS[id].label,
+      x: talkCenter.value.x + radius * Math.cos(rad),
+      y: talkCenter.value.y - radius * Math.sin(rad), // 画面yは下向き
+    }
+  })
+})
 
 // --- ⑩ 演出用 ---
 const exploreCell = ref(null) // いま開拓中/帰宅待ちのセル
@@ -209,32 +252,83 @@ const moppoExpression = computed(() => {
   }
 })
 
-// 展開中アイコンの配置
+// 展開メニューの角(あそぶ=右下 / きろく=左下)。弧の中心
+const menuCorner = computed(() => {
+  if (!stageSize.value) return null
+  return { x: expandedSide.value === 'left' ? 0 : stageSize.value.width, y: stageSize.value.height }
+})
+// 角からの弧に沿ってアイコンを配置。angles=下辺からの角度、dir=内向き(右角は左/左角は右)
+const arcPoint = (radius, angleDeg) => {
+  const C = menuCorner.value
+  const phi = (angleDeg * Math.PI) / 180
+  const dir = expandedSide.value === 'left' ? 1 : -1
+  return { x: C.x + dir * radius * Math.cos(phi), y: C.y - radius * Math.sin(phi) }
+}
 const iconPositions = computed(() => {
-  if (!expandedSide.value || !zonePositions.value || !stageSize.value) return []
-  const zone = zonePositions.value[expandedSide.value]
-  const w = stageSize.value.width
+  if (!expandedSide.value || !menuCorner.value) return []
   const ids = expandedSide.value === 'left' ? RECORD_ITEMS : PLAY_ITEMS
-  return ids.map((id, i) => {
-    const xFrac = expandedSide.value === 'left' ? ICON_LAYOUT[i].xFrac : 1 - ICON_LAYOUT[i].xFrac
-    return {
-      id,
-      ...SCREENS[id],
-      x: gsap.utils.clamp(ZONE_EDGE_MARGIN, w - ZONE_EDGE_MARGIN, xFrac * w),
-      y: Math.max(ZONE_EDGE_MARGIN, zone.y + ICON_LAYOUT[i].dy),
-    }
-  })
+  return ids.map((id, i) => ({ id, ...SCREENS[id], ...arcPoint(MENU_ARC.radius, MENU_ARC.angles[i]) }))
 })
 const pillPosition = computed(() => {
-  if (!expandedSide.value || !zonePositions.value || !stageSize.value) return null
-  const zone = zonePositions.value[expandedSide.value]
-  const xFrac = expandedSide.value === 'left' ? PILL_LAYOUT.xFrac : 1 - PILL_LAYOUT.xFrac
+  if (!expandedSide.value || !menuCorner.value) return null
   return {
     side: expandedSide.value,
     label: expandedSide.value === 'left' ? 'きろく' : 'あそぶ',
-    x: xFrac * stageSize.value.width,
-    y: zone.y + PILL_LAYOUT.dy,
+    ...arcPoint(MENU_ARC.pill.radius, MENU_ARC.pill.angle),
   }
+})
+// 角(あそぶ=右下 / きろく=左下)中心のグロー。半径はアイコン最遠 + 余白。DropZones ではなく
+// Hub 直下に置くことで、モッポを離して DropZones が消えても閉じ演出を最後まで再生できる
+const glow = computed(() => {
+  if (!expandedSide.value || !iconPositions.value.length || !menuCorner.value) return null
+  const { x: cx, y: cy } = menuCorner.value
+  let maxR = 0
+  for (const it of iconPositions.value) maxR = Math.max(maxR, Math.hypot(it.x - cx, it.y - cy))
+  return { x: cx, y: cy, r: maxR * MENU_ARC.glowFrac, side: expandedSide.value }
+})
+// 直近の展開角(離した時、DropZones を角へすぼめる leave で使う。leave 時は expandedSide が
+// 既に null なので、展開中に覚えておく)
+let lastCorner = null
+// グロー出現: 角(x/y)を原点に、畳んだ状態からスケール＋フェードでじんわり広がる
+const onGlowEnter = (el, done) => {
+  const g = glow.value
+  if (g) lastCorner = { x: g.x, y: g.y }
+  gsap.set(el, { transformOrigin: g ? `${g.x}px ${g.y}px` : '50% 100%' })
+  gsap.fromTo(
+    el,
+    { scale: MENU_BLOB.revealScale, autoAlpha: 0 },
+    { scale: 1, autoAlpha: 1, duration: MENU_BLOB.revealDur, ease: 'power2.out', onComplete: done },
+  )
+}
+// グロー消滅(離した時/側切替時): 出現時に付いた角原点(inline)へ向かって逆再生でスッとすぼむ
+const onGlowLeave = (el, done) => {
+  gsap.to(el, {
+    scale: MENU_BLOB.revealScale,
+    autoAlpha: 0,
+    duration: MENU_BLOB.revealDur * 0.8,
+    ease: 'power2.in',
+    onComplete: done,
+  })
+}
+
+// DropZones(機能アイコン・ピル・ゾーン)。入りは中の jellyPopIn に任せる(即 done)。
+// 離した時は、グローと同じく角へすぼみながらフェードして「ゆっくり消える」
+const onZonesEnter = (_el, done) => done()
+const onZonesLeave = (el, done) => {
+  gsap.set(el, { transformOrigin: lastCorner ? `${lastCorner.x}px ${lastCorner.y}px` : '50% 100%' })
+  gsap.to(el, {
+    scale: MENU_BLOB.revealScale,
+    autoAlpha: 0,
+    duration: MENU_BLOB.revealDur * 0.8,
+    ease: 'power2.in',
+    onComplete: done,
+  })
+}
+
+// アイコン吸着の対象(client座標)。展開中のアイコンだけ引き寄せの対象にする
+const attractors = computed(() => {
+  if (!expandedSide.value || !stageOffset.value) return []
+  return iconPositions.value.map((it) => ({ x: stageOffset.value.left + it.x, y: stageOffset.value.top + it.y }))
 })
 
 // ---- 当たり判定(すべて指の位置基準。判定の優先順位: アイコン > 靄セル > ゾーン) ----
@@ -270,21 +364,39 @@ const hitFogCell = (p) => {
 
 const resetDragState = () => {
   grabRect = null
+  stageOffset.value = null
   zonePositions.value = null
   activeZone.value = null
   expandedSide.value = null
   hoveredIcon.value = null
   targetFogCell.value = null
+  cloudActive.value = false
+}
+
+// ---- はなす扇: 展開(モッポは移動できない。選択はタップ) ----
+const openTalk = () => {
+  const home = moppoRef.value?.getHomeCenter()
+  talkCenter.value = home ? toLocal(home.x, home.y) : { x: 0, y: 0 }
+  navBase.value = hubState.value
+  if (hubState.value === 'idle') moppoRef.value?.squishPop()
+  hubState.value = 'talk'
+}
+// 選択決定: はなす中はモッポを動かさない。タップで扇を閉じて即遷移
+const onTalkSelect = (id) => {
+  hubState.value = navBase.value
+  goScreen(id)
 }
 
 // ---- ジェスチャー(モッポ本体 or るすのざぶとん から来る) ----
 const onGrab = () => {
+  // はなす中はモッポをロック(pointer-events none)しているのでここには来ない。
   // idle=モッポ直接掴み / exploring=ざぶとん掴み(ナビ専用) のどちらからも開始できる
   if (hubState.value !== 'idle' && hubState.value !== 'exploring') return
   navBase.value = hubState.value
   hubState.value = 'grabbed'
   const rect = hubEl.value.getBoundingClientRect()
   grabRect = rect
+  stageOffset.value = { left: rect.left, top: rect.top }
   const home = moppoRef.value?.getHomeCenter()
   if (!home) return
   const y = toLocal(home.x, home.y).y
@@ -303,8 +415,11 @@ const onDrag = (p) => {
     hoveredIcon.value = null
   }
   hoveredIcon.value = expandedSide.value ? hitIcon(local) : null
-  // モッポ直接掴みの時だけ、靄セルをターゲット強調(ざぶとん掴み=ナビ専用は対象外)
-  targetFogCell.value = navBase.value === 'idle' && !expandedSide.value ? hitFogCell(local)?.id ?? null : null
+  // 席より少し上=雲の上へドラッグした時だけ、雲の点線を出す(モッポ直接掴み・きろく/あそぶ未展開の時)
+  const seatY = zonePositions.value.left.y
+  cloudActive.value = navBase.value === 'idle' && !expandedSide.value && local.y < seatY - CLOUD_REVEAL_OFFSET
+  // 靄セルのターゲット強調も、雲の上に来ている時だけ
+  targetFogCell.value = cloudActive.value ? hitFogCell(local)?.id ?? null : null
 }
 const onRelease = (p) => {
   if (hubState.value !== 'grabbed') {
@@ -313,12 +428,14 @@ const onRelease = (p) => {
   }
   const local = p ? toLocal(p.mx ?? p.x, p.my ?? p.y) : null
   const icon = hoveredIcon.value ?? (local ? hitIcon(local) : null)
-  const fog = !icon && navBase.value === 'idle' && local ? hitFogCell(local) : null
+  // きろく/あそぶ を一度でも触った(展開した)後は、雲の上で離しても開拓しない(誤爆防止)
+  const fog = !icon && !expandedSide.value && navBase.value === 'idle' && local ? hitFogCell(local) : null
   resetDragState()
 
   if (icon) {
+    // アイコン選択時はホーム復帰の演出を入れない。すぐ遷移するので不要で、
+    // 初回は遷移先の読み込み待ちの間に「中央へ戻る」演出が一瞬見えてしまう
     hubState.value = navBase.value
-    if (navBase.value === 'idle') moppoRef.value?.returnHome()
     goScreen(icon)
     return
   }
@@ -341,9 +458,7 @@ const onTap = () => {
     return
   }
   if (hubState.value !== 'idle' && hubState.value !== 'exploring') return
-  navBase.value = hubState.value
-  if (hubState.value === 'idle') moppoRef.value?.squishPop()
-  hubState.value = 'talk'
+  openTalk()
 }
 const onLongPress = () => {
   if (hubState.value !== 'idle') return
@@ -510,6 +625,13 @@ const onSheetSelect = (id) => {
   user-select: none;
   -webkit-user-select: none;
 }
+/* 角グローの専用レイヤー。ドロップゾーン(z25)の下・お気に入り(z20)の上 */
+.glow-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 24;
+  pointer-events: none;
+}
 .hint-pill {
   position: absolute;
   bottom: 10px;
@@ -530,6 +652,15 @@ const onSheetSelect = (id) => {
 .hint-pill.night {
   background: rgba(40, 44, 54, 0.9);
   color: #cdd2dc;
+}
+/* はなす: 地図＋検索を沈める暗幕(blur)。モッポ(z30)はこの上=明るいまま */
+.talk-dim {
+  position: absolute;
+  inset: 0;
+  z-index: 26;
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
 }
 /* ⑩ 「＋○けん」カウントアップ */
 .found-count {

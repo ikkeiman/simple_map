@@ -129,6 +129,18 @@ export function useMoppoMotion(bodyRef) {
     walkLoop = null
   }
 
+  // はなす選択時: 項目の方へ「ちょこん」と跳ねてからホームへ戻る(dx,dy=項目への相対)
+  const hopToward = (dx, dy, ratio = 0.4) => {
+    const el = bodyRef.value
+    if (!el) return null
+    stopFollow()
+    stopWalk()
+    return gsap
+      .timeline()
+      .to(el, { x: dx * ratio, y: dy * ratio, scaleX: 1.1, scaleY: 0.9, duration: 0.16, ease: 'power2.out', transformOrigin: '50% 100%' })
+      .to(el, { x: 0, y: 0, scaleX: 1, scaleY: 1, duration: 0.6, ease: JELLY.returnEase })
+  }
+
   // ⑩「じゃーん!」の発見ポーズ。予備しゃがみ→大きくジャンプ→着地ぷるん
   const tada = () => {
     const el = bodyRef.value
@@ -265,7 +277,7 @@ export function useMoppoMotion(bodyRef) {
     })
   }
 
-  return { startFollow, followTo, returnHome, squishPop, sneezeAt, sleepSequence, cancelSleep, wakeStartle, sleepBreathe, breathe, walkOut, stopWalk, tada }
+  return { startFollow, followTo, returnHome, squishPop, sneezeAt, sleepSequence, cancelSleep, wakeStartle, sleepBreathe, breathe, walkOut, stopWalk, tada, hopToward }
 }
 
 // ボタン等を「ぷにっ」と潰して戻す共通ヘルパ(トグル/チップのタップ演出用)。

@@ -2,9 +2,9 @@
   <!-- 足元の★4スロット(1a の千鳥配置)。1〜3=自由枠 / 4=「ぜんぶ」固定席。
        つかんでいる間は沈める(★とドロップゾーンが同じ側にあり誤爆するため) -->
   <div ref="barEl" class="favorite-bar">
-    <FavoriteSlot class="s1" :fav="favorites[0]" @activate="onSlot(0)" />
-    <FavoriteSlot class="s2" :fav="favorites[1]" @activate="onSlot(1)" />
-    <FavoriteSlot class="s3" :fav="favorites[2]" @activate="onSlot(2)" />
+    <FavoriteSlot class="s1" :fav="favorites[0]" @activate="onSlot(0)" @longpress="onEdit(0)" />
+    <FavoriteSlot class="s2" :fav="favorites[1]" @activate="onSlot(1)" @longpress="onEdit(1)" />
+    <FavoriteSlot class="s3" :fav="favorites[2]" @activate="onSlot(2)" @longpress="onEdit(2)" />
     <FavoriteSlot class="s4" fixed @activate="emit('open-all')" />
   </div>
 </template>
@@ -38,6 +38,11 @@ const onSlot = (index) => {
   const fav = favorites.value[index]
   if (fav) emit('go', fav.screen)
   else emit('pick-for-slot', index) // 空き枠 → 登録先を選ばせる
+}
+
+// 中身のある枠を長押し → 「ぜんぶ」画面(pick)で選び直し。空き枠登録と同じ経路を再利用
+const onEdit = (index) => {
+  if (favorites.value[index]) emit('pick-for-slot', index)
 }
 
 // 親(AllScreensSheet 経由)からの登録
