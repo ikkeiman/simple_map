@@ -42,6 +42,7 @@
       <DropZones
         v-if="hubState === 'grabbed' && zonePositions"
         :zones="zonePositions"
+        :corner="menuCorner"
         :active-zone="activeZone"
         :expanded-side="expandedSide"
         :icons="iconPositions"

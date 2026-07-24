@@ -16,34 +16,41 @@
       <div class="label">{{ zone.label }}</div>
     </div>
 
-    <!-- 展開中の方向ラベル(白ピル・参考画像のきろくピル) -->
-    <div v-if="pill" :key="pill.side" ref="pillEl" class="pill" :class="pill.side" :style="{ left: pill.x + 'px', top: pill.y + 'px' }">
-      {{ pill.label }}
-    </div>
+    <!-- 展開メニュー(方向ピル＋機能アイコン)。側を key にしてあるので、きろく⇔あそぶ を
+         またいだ時は旧側がまとめて leave する = 離した時と同じ「角へすぼむ」演出で消える -->
+    <Transition :css="false" @enter="onMenuEnter" @leave="onMenuLeave">
+      <div v-if="expandedSide" :key="expandedSide" class="menu-group">
+        <!-- 展開中の方向ラベル(白ピル・参考画像のきろくピル) -->
+        <div v-if="pill" ref="pillEl" class="pill" :class="pill.side" :style="{ left: pill.x + 'px', top: pill.y + 'px' }">
+          {{ pill.label }}
+        </div>
 
-    <!-- ゾーンに重ねた時に展開するアイコン(この上で離すと画面遷移) -->
-    <div
-      v-for="item in icons"
-      :key="item.id"
-      ref="iconEls"
-      class="icon"
-      :class="[expandedSide, { hovered: hoveredIcon === item.id }]"
-      :style="{ left: item.x + 'px', top: item.y + 'px' }"
-    >
-      <span class="coin">{{ item.icon }}</span>
-      <span class="clab">{{ item.label }}</span>
-    </div>
+        <!-- ゾーンに重ねた時に展開するアイコン(この上で離すと画面遷移) -->
+        <div
+          v-for="item in icons"
+          :key="item.id"
+          ref="iconEls"
+          class="icon"
+          :class="[expandedSide, { hovered: hoveredIcon === item.id }]"
+          :style="{ left: item.x + 'px', top: item.y + 'px' }"
+        >
+          <span class="coin">{{ item.icon }}</span>
+          <span class="clab">{{ item.label }}</span>
+        </div>
+      </div>
+    </Transition>
   </div>
 </template>
 
 <script setup>
 import { computed, nextTick, onMounted, useTemplateRef, watch } from 'vue'
 import gsap from 'gsap'
-import { ZONE_RADIUS, JELLY } from '../../constants/hubConfig'
+import { ZONE_RADIUS, JELLY, MENU_BLOB } from '../../constants/hubConfig'
 import { jellyPopIn } from '../../composables/useMoppoMotion'
 
 const props = defineProps({
   zones: { type: Object, required: true }, // { left:{x,y}, right:{x,y} } (px)
+  corner: { type: Object, default: null }, // 展開側の角 {x,y}(すぼむ演出の支点)
   activeZone: { type: String, default: null }, // モッポが重なっているゾーン
   expandedSide: { type: String, default: null }, // アイコン展開中の側
   icons: { type: Array, default: () => [] }, // [{ id, icon, label, x, y }]
@@ -67,6 +74,28 @@ onMounted(() => jellyPopIn(zoneEls.value))
 // 反対側のゾーンは選択肢として残す。CSS の !important で、出現ポップ(jellyPopIn が付ける
 // inline opacity)に打ち勝って確実に隠す。フェードは .zone の transition が担う。
 const hiddenSide = computed(() => props.expandedSide ?? props.activeZone)
+
+// 展開メニュー(ピル＋アイコン)の入り: 中の jellyPopIn が担当するので即 done。
+// ただし「その時の角」を要素に焼き付けておく(leave 時には既に別の側へ切り替わっているため)
+const onMenuEnter = (el, done) => {
+  if (props.corner) {
+    el.dataset.cx = String(props.corner.x)
+    el.dataset.cy = String(props.corner.y)
+  }
+  done()
+}
+// 側をまたいだ時の旧メニューの消え方 = 離した時と同じ(自分の角へすぼみながらフェード)
+const onMenuLeave = (el, done) => {
+  const { cx, cy } = el.dataset
+  gsap.set(el, { transformOrigin: cx != null ? `${cx}px ${cy}px` : '50% 100%' })
+  gsap.to(el, {
+    scale: MENU_BLOB.revealScale,
+    autoAlpha: 0,
+    duration: MENU_BLOB.revealDur * 0.8,
+    ease: 'power2.in',
+    onComplete: done,
+  })
+}
 
 // 展開側が変わったらアイコンとピルをぷるんと出し直す
 watch(
@@ -102,6 +131,11 @@ watch(
   inset: 0;
   z-index: 25;
   pointer-events: none; /* 判定は MoppoHub が距離計算で行う。DOMヒットに頼らない */
+}
+/* 展開メニューのまとめ枠。中身は hub-local px で絶対配置するので、枠は全面に広げるだけ */
+.menu-group {
+  position: absolute;
+  inset: 0;
 }
 .zone,
 .icon,
